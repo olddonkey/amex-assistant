@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.9.0
+// @version      0.9.1
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -192,8 +192,14 @@
         });
       }
     }
-    return [...byKey.values()].sort(
-      (a, b) => b.cards.length - a.cards.length);
+    const addable = (g) => g.cards.filter((c) => !c.enrolled).length;
+    return [...byKey.values()].sort((a, b) => {
+      // Fully-added offers sink to the bottom; otherwise most-eligible first.
+      const aDone = addable(a) === 0;
+      const bDone = addable(b) === 0;
+      if (aDone !== bDone) return aDone ? 1 : -1;
+      return b.cards.length - a.cards.length;
+    });
   }
 
   /**
@@ -734,6 +740,42 @@
     return match ? `至 ${match[1]}/${match[2]}` : '';
   }
 
+  /** Soft [background, foreground] pairs for the initials-logo fallback. */
+  const LOGO_PALETTE = [
+    ['#E7F0FA', '#1B62A8'], ['#FBEDE3', '#B4551E'], ['#EDEDF0', '#3A3D42'],
+    ['#E9F3EC', '#1B7A44'], ['#F3EAF6', '#7A3E8E'], ['#FDECEC', '#B4283B'],
+    ['#FBF3E0', '#8A6D1C'],
+  ];
+
+  /**
+   * Stable [bg, fg] colors for a merchant, so the logo squares vary like the
+   * design when no real logo image is available.
+   * @param {string} name Merchant name.
+   * @return {!Array<string>} [background, foreground].
+   */
+  function logoColors(name) {
+    let h = 0;
+    for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return LOGO_PALETTE[h % LOGO_PALETTE.length];
+  }
+
+  /**
+   * A card-colored gradient for the swatch when no card-art image is available.
+   * @param {string} token Card token.
+   * @return {string} A CSS gradient.
+   */
+  function swatchStyle(token) {
+    const family = (cardOf(token)?.shortName || '').toLowerCase();
+    const grad = (a, b) => `linear-gradient(135deg,${a},${b})`;
+    if (family.includes('platinum')) return grad('#dfe2e6', '#b3b9c1');
+    if (family.includes('gold')) return grad('#e9cd85', '#c29a45');
+    if (family.includes('blue') || family.includes('cash')) {
+      return grad('#3a86c8', '#154e88');
+    }
+    if (family.includes('green')) return grad('#5aa06e', '#2f6b45');
+    return grad('#c9ccd0', '#9aa0a8');
+  }
+
   const PANEL_STYLE = `
     :host { all: initial; }
     * { box-sizing: border-box; }
@@ -798,7 +840,7 @@
     .list { display: flex; flex-direction: column; }
     .row { display: flex; gap: 11px; padding: 13px 18px; align-items: center;
       border-bottom: 1px solid var(--line2); }
-    .row.done { opacity: .5; }
+    .grp.done { opacity: .5; }
     .grp.exp { box-shadow: inset 2px 0 0 var(--blue); background: #FBFDFF; }
     .grp.exp > .row { border-bottom: none; padding-bottom: 8px; }
     .logo {
@@ -810,8 +852,8 @@
     .mn { flex: 1; min-width: 0; }
     .nm { font-size: 13px; font-weight: 700; color: var(--ink);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ds { font-size: 12px; color: var(--sub); margin-top: 1px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ds { font-size: 12px; color: var(--sub); margin-top: 1px; overflow: hidden;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .rt { text-align: right; flex: none; }
     .bd { font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer;
       font-variant-numeric: tabular-nums; color: var(--blue); }
@@ -949,6 +991,9 @@
     if (group.image) {
       logo.append(el('img', {src: group.image, alt: '', loading: 'lazy'}));
     } else {
+      const [bg, fg] = logoColors(group.name);
+      logo.style.background = bg;
+      logo.style.color = fg;
       logo.textContent = merchantInitials(group.name);
     }
 
@@ -1054,6 +1099,7 @@
       const sw = el('span', {class: 'sw'});
       const cardData = cardOf(card.token);
       if (cardData?.art) sw.append(el('img', {src: cardData.art, alt: ''}));
+      else sw.style.background = swatchStyle(card.token);
       const label = el('label', {class: card.enrolled ? 'ccard off' : 'ccard'},
         cb, sw, cardLabel(card.token));
       if (card.enrolled) {
