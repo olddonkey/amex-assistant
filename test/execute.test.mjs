@@ -1,8 +1,8 @@
 /**
- * @fileoverview Tests for executeSelected: dry-run, that enroll uses each
- * card's own offerId (not the group key), that a whole offer's cards are fired
- * concurrently, the three-state outcome (verified / failed / ghost), progress
- * reporting, and that one failure does not abort the run.
+ * @fileoverview Tests for executeSelected: that enroll uses each card's own
+ * offerId (not the group key), that a whole offer's cards are fired
+ * concurrently, the four-state outcome (verified / failed / ghost /
+ * unverified), progress reporting, and that one failure does not abort the run.
  */
 
 import assert from 'node:assert/strict';
@@ -31,19 +31,6 @@ const noDelay = () => Promise.resolve();
 function task(token, offerId, key) {
   return {token, offerId, key, name: 'offer'};
 }
-
-test('dry-run expands tasks and sends no requests', async () => {
-  const mock = createMockFetch({onEnroll: enrollHandlers.fail});
-  globalThis.fetch = mock;
-
-  const results = await executeSelected(
-    [task('A', 'OA', 'PZ'), task('B', 'OB', 'PZ')],
-    {dryRun: true, delay: noDelay});
-
-  assert.equal(results.length, 2);
-  assert.ok(results.every((r) => r.state === ResultState.DRY_RUN));
-  assert.equal(mock.calls.length, 0, 'dry-run must not call fetch');
-});
 
 test('enrolls with the per-card offerId, not the group key', async () => {
   const mock = createMockFetch({

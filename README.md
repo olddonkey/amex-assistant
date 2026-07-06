@@ -34,13 +34,12 @@ any third party).
 1. Click **Offers** — the panel loads every card and its offers.
 2. Tick an offer to queue it for **all** its eligible cards, or click **cards**
    to pick specific ones. Already-added cards are disabled.
-3. Keep **Dry-run** checked to preview; uncheck it to actually enroll.
-4. Click **Add selected**. All cards for the *same* offer are enrolled
-   concurrently (once one card takes an offer, Amex can make it ineligible on
-   the others, so firing together is what lets more than one card win);
-   different offers are paced a bit apart. When done, the footer shows
-   `verified / failed / ghost` counts and the console prints a per-(offer, card)
-   table.
+3. Click **Add selected** — this enrolls immediately. All cards for the *same*
+   offer are enrolled concurrently (once one card takes an offer, Amex can make
+   it ineligible on the others, so firing together is what lets more than one
+   card win); different offers are paced a bit apart. When done, the footer
+   shows `verified / failed / ghost` counts and the console prints a
+   per-(offer, card) table.
 
 `ghost` = the enroll request reported success but the offer was **not** found on
 re-read — usually American Express's per-person de-duplication silently
@@ -62,8 +61,8 @@ npm run lint    # ESLint (Google-style conventions via @stylistic)
 
 The internal API is undocumented, so confirm it against your own live session
 once (this is the one step that needs your login): follow the DevTools checklist
-in [`docs/FINDINGS.md`](docs/FINDINGS.md) §4, then do a first real enroll on a
-single card with **Dry-run off** and confirm it shows as `verified`.
+in [`docs/FINDINGS.md`](docs/FINDINGS.md) §4, then do a first real enroll by
+selecting a single offer on one card and confirm it shows as `verified`.
 
 ## Docs
 
