@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.10.0
+// @version      0.10.1
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -1015,17 +1015,17 @@
     const rt = el('div', {class: 'rt'});
     if (fullyAdded) {
       rt.append(el('div', {class: 'done-tag',
-        text: `已加全部 ${group.cards.length} 卡`}));
+        text: `${group.cards.length} 张卡都已加`}));
     } else {
       const badge = el('div', {class: 'bd'});
       if (addedCount) {
         badge.append(
-          el('span', {text: `可加 ${addable.length}`}),
+          el('span', {text: `可加 ${addable.length} 张`}),
           el('span', {class: 'dot', text: ' · '}),
-          el('span', {class: 'en', text: `已加 ${addedCount}`}),
+          el('span', {class: 'en', text: `已加 ${addedCount} 张`}),
           el('span', {class: 'car', text: ' ▾'}));
       } else {
-        badge.append(el('span', {text: `可加 ${addable.length}`}),
+        badge.append(el('span', {text: `可加 ${addable.length} 张`}),
           el('span', {class: 'car', text: ' ▾'}));
       }
       badge.onclick = () => toggleExpand(wrap, box, badge, group);
@@ -1092,7 +1092,7 @@
    */
   function renderCardBox(box, group, pick) {
     box.textContent = '';
-    box.append(el('div', {class: 'lb', text: '加到哪些卡'}));
+    box.append(el('div', {class: 'lb', text: '选择要加到哪些卡'}));
     const chosen = state.selected.get(group.key) || new Set();
     for (const card of group.cards) {
       const result = state.lastResults.get(`${group.key}|${card.token}`);
@@ -1160,7 +1160,7 @@
       hd.append(rf);
     }
     if (opts.close) {
-      hd.append(el('button', {class: 'cl', title: 'Close', text: '×',
+      hd.append(el('button', {class: 'cl', title: '关闭', text: '×',
         onclick: () => hidePanel()}));
     }
     return hd;
@@ -1189,7 +1189,7 @@
     const body = el('div', {class: 'body'});
 
     const search = el('input', {type: 'search', value: state.query,
-      placeholder: '⌕ 搜索商户 · Search offers'});
+      placeholder: '搜索商家或 offer'});
     search.oninput = (e) => {
       state.query = e.target.value.trim().toLowerCase();
       renderRows(body);
@@ -1207,7 +1207,7 @@
       };
       tabs.append(tab);
     };
-    addTab('all', '全部卡');
+    addTab('all', '所有卡');
     for (const card of state.cards) {
       const digits = cardDisplayDigits(cardRaw(card)) ||
           String(card.token).slice(-4);
@@ -1222,11 +1222,12 @@
       state.multiOnly = multi.checked;
       renderRows(body);
     };
-    tb.append(el('label', {}, multi, '只看多卡可加'), el('div', {class: 'sp'}),
+    tb.append(el('label', {}, multi, '只看能加多张卡的'),
+      el('div', {class: 'sp'}),
       el('div', {class: 'ac'},
-        el('a', {class: 'a-blue', text: '全选可加',
+        el('a', {class: 'a-blue', text: '全选当前可加',
           onclick: () => selectAllVisible(body)}),
-        el('a', {class: 'a-mut', text: '清空',
+        el('a', {class: 'a-mut', text: '清空选择',
           onclick: () => clearSelection(body)})));
     body.append(tb);
 
@@ -1245,8 +1246,8 @@
     const shown = visibleOffers();
     for (const group of shown) list.append(renderOfferRow(group));
     if (shown.length === 0) {
-      list.append(el('div', {class: 'msg',
-        style: 'padding:24px'}, el('div', {class: 'note', text: '无匹配 offer'})));
+      const empty = el('div', {class: 'note', text: '没有匹配的 offer'});
+      list.append(el('div', {class: 'msg', style: 'padding:24px'}, empty));
     }
     refreshFooter();
   }
@@ -1254,7 +1255,7 @@
   /** @return {!Element} The list-view footer. */
   function renderFooter() {
     const sm = el('div', {class: 'sm', id: 'sm'});
-    const go = el('button', {class: 'go', id: 'go', text: '加入所选',
+    const go = el('button', {class: 'go', id: 'go', text: '加到所选卡',
       onclick: () => runSelected()});
     return el('div', {class: 'ft'}, sm, go);
   }
@@ -1270,9 +1271,9 @@
     sm.textContent = '';
     sm.append(document.createTextNode('已选 '),
       el('b', {text: String(offers)}),
-      document.createTextNode(' 个 offer · '),
+      document.createTextNode(' 个 offer，将提交 '),
       el('b', {text: String(pairs)}),
-      document.createTextNode(' 次添加，并行发出'));
+      document.createTextNode(' 次 Add to Card'));
     go.disabled = pairs === 0;
   }
 
@@ -1290,12 +1291,14 @@
         'align-items:baseline;margin-bottom:8px';
     body.append(el('div', {style: rowStyle},
       el('div', {style: 'font-size:13px;font-weight:700',
-        text: '正在读取每张卡的 offers…'}),
+        text: '正在读取每张卡的 offer…'}),
       el('div', {class: 'note',
-        text: known ? `第 ${pr.done} / ${pr.total} 张卡` : '读取卡片列表…'})));
+        text: known ? `第 ${pr.done} / ${pr.total} 张卡` :
+          '正在读取卡列表…'})));
     body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
       el('div', {style: `width:${pct}%`})));
-    body.append(el('div', {class: 'note', text: '只读快照，不会改动你的账户'}));
+    body.append(el('div', {class: 'note',
+      text: '这里只读取 Offer 列表，不会改动账户'}));
     shell.append(body);
   }
 
@@ -1308,16 +1311,16 @@
     const pending = run.total - seen;
     const pct = run.total ? Math.round(seen / run.total * 100) : 0;
     shell.append(renderHeader({glyph: el('span', {class: 'spin'}),
-      title: '正在添加…',
-      subtitle: `${run.total} 个请求已并行发出`,
+      title: '正在加到卡上…',
+      subtitle: `${run.total} 次 Add to Card 已提交`,
       right: el('div', {class: 'b', style: 'font-size:12px;font-weight:700',
-        text: `${run.results.length} / ${run.total} 已返回`})}));
+        text: `已处理 ${run.results.length} / ${run.total}`})}));
     const body = el('div', {class: 'body'});
     body.append(el('div', {style: 'padding:16px 18px 0'},
       el('div', {class: 'bar'}, el('div', {style: `width:${pct}%`}))));
     body.append(counters([
-      {n: ok, l: '成功返回', c: 'g'}, {n: fail, l: '失败', c: 'r'},
-      {n: pending, l: '请求中', c: 'b'}]));
+      {n: ok, l: '提交成功', c: 'g'}, {n: fail, l: '提交失败', c: 'r'},
+      {n: pending, l: '提交中', c: 'b'}]));
     const rl = el('div', {style: 'padding:4px 18px 8px'});
     const settledIds = new Set(run.results.map((r) => `${r.key}|${r.token}`));
     for (const task of run.tasks) {
@@ -1326,12 +1329,12 @@
       const txt = `${task.name} → ${cardLabel(task.token)}`;
       let icon; let stTxt; let stCls;
       if (!done) {
-        icon = el('span', {class: 'spin'}); stTxt = '请求中'; stCls = 'st b';
+        icon = el('span', {class: 'spin'}); stTxt = '提交中'; stCls = 'st b';
       } else if (done.reportedOk) {
-        icon = el('span', {class: 'g', text: '✓'}); stTxt = '已返回';
+        icon = el('span', {class: 'g', text: '✓'}); stTxt = '提交成功';
         stCls = 'st g';
       } else {
-        icon = el('span', {class: 'r', text: '✗'}); stTxt = '失败';
+        icon = el('span', {class: 'r', text: '✗'}); stTxt = '提交失败';
         stCls = 'st r';
       }
       rl.append(el('div', {class: 'ri'}, icon,
@@ -1342,7 +1345,7 @@
     const footStyle = 'border-top:1px solid #E7E8EA;padding:11px 18px';
     body.append(el('div', {style: footStyle},
       el('div', {class: 'note',
-        text: '全部返回后自动重拉各卡已加列表做真实校验'})));
+        text: '提交完成后，会重新读取已加列表，确认哪些卡真的加上'})));
     shell.append(body);
     void settledIds;
   }
@@ -1351,19 +1354,19 @@
   function renderResultView(shell) {
     const results = [...state.lastResults.values()];
     const n = (s) => results.filter((r) => r.state === s).length;
-    shell.append(renderHeader({glyph: '✓', title: '执行完成 · 已重新校验',
-      subtitle: `${results.length} 个请求并行发出`, close: true}));
+    shell.append(renderHeader({glyph: '✓', title: '完成，已核对',
+      subtitle: `${results.length} 次 Add to Card 已处理`, close: true}));
     const body = el('div', {class: 'body'});
     body.append(counters([
-      {n: n(ResultState.VERIFIED), l: '已校验成功', c: 'g'},
-      {n: n(ResultState.FAILED), l: '请求失败', c: 'r'},
-      {n: n(ResultState.GHOST) + n(ResultState.UNVERIFIED), l: '假成功/未校验',
-        c: 'am'}]));
+      {n: n(ResultState.VERIFIED), l: '确认已加', c: 'g'},
+      {n: n(ResultState.FAILED), l: '添加失败', c: 'r'},
+      {n: n(ResultState.GHOST) + n(ResultState.UNVERIFIED),
+        l: '疑似去重/无法确认', c: 'am'}]));
     body.append(el('div', {class: 'info'},
-      el('b', {text: '什么是假成功？'}),
-      'Amex 服务端按人去重：同一 offer 多卡同抢，往往只认先到的那张。' +
-        '请求返回 SUCCESS 但校验时不在已加列表里的，归入此类；' +
-        '「未校验」是校验读取本身失败、无法判定。'));
+      el('b', {text: '什么是疑似去重？'}),
+      'Amex 返回 SUCCESS，但重新读取已加列表后没在这张卡看到这个 ' +
+        'offer，就会归到这里。常见原因是同一个 offer 可能只允许加到' +
+        '一张卡；「无法确认」表示重新读取失败。'));
 
     const section = (title, filter, glyph, cls) => {
       const items = results.filter(filter);
@@ -1381,14 +1384,14 @@
       }
       body.append(wrap);
     };
-    section('已校验成功', (r) => r.state === ResultState.VERIFIED, '✓', 'g');
-    section('请求失败', (r) => r.state === ResultState.FAILED, '✗', 'r');
-    section('假成功 — 返回成功但校验未出现',
+    section('确认已加', (r) => r.state === ResultState.VERIFIED, '✓', 'g');
+    section('添加失败', (r) => r.state === ResultState.FAILED, '✗', 'r');
+    section('疑似去重 — SUCCESS 但复查未出现在已加列表',
       (r) => r.state === ResultState.GHOST, '⚠', 'am');
-    section('未校验 — 校验读取失败',
+    section('无法确认 — 重新读取失败',
       (r) => r.state === ResultState.UNVERIFIED, '?', 'note');
 
-    const retry = el('div', {class: 'lnk rerun', text: '重试失败项',
+    const retry = el('div', {class: 'lnk rerun', text: '重试添加失败项',
       onclick: () => retryFailed()});
     if (!results.some((r) => r.state === ResultState.FAILED)) {
       retry.style.display = 'none';
@@ -1397,7 +1400,8 @@
     shell.append(el('div', {class: 'ft'},
       el('div', {class: 'lnk', text: '导出 CSV', onclick: () => exportCsv()}),
       el('div', {class: 'sp', style: 'flex:1'}), retry,
-      el('button', {class: 'go', text: '完成', onclick: () => backToList()})));
+      el('button', {class: 'go', text: '返回列表',
+        onclick: () => backToList()})));
   }
 
   /**
@@ -1420,9 +1424,9 @@
     shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true}));
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
       el('div', {class: 'cir ok', text: '✓'}),
-      el('div', {class: 'h', text: '没有可加的 offer'}),
+      el('div', {class: 'h', text: '暂无可加的 offer'}),
       el('div', {class: 'txt',
-        text: '所有 offer 都已加到它们可用的卡上。'}),
+        text: '当前 offer 都已加到可用的卡上。'}),
       el('div', {class: 'btn', onclick: () => refresh()}, '↻ 重新读取'))));
   }
 
@@ -1432,9 +1436,9 @@
       err: true}));
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
       el('div', {class: 'cir bad', text: '!'}),
-      el('div', {class: 'h', text: '读取快照失败'}),
+      el('div', {class: 'h', text: '读取 Offer 列表失败'}),
       el('div', {class: 'txt', text: state.errorMessage ||
-          '登录态可能已过期。请先在本页登录 Amex，再重试。'}),
+          '登录状态可能已过期。请先在当前页面登录 Amex，再重试。'}),
       el('div', {class: 'btn pri', onclick: () => refresh()}, '重试'))));
   }
 
@@ -1509,7 +1513,7 @@
       } catch { /* keep previous list; result view still shows outcomes */ }
       state.view = 'result';
     } catch (error) {
-      state.errorMessage = `执行失败：${error.message}`;
+      state.errorMessage = `添加过程中断：${error.message}`;
       state.view = 'error';
     }
     render();

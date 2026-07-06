@@ -27,23 +27,24 @@ any third party).
    - **[direct from GitHub](https://raw.githubusercontent.com/olddonkey/amex-assistant/main/src/amex-assistant.user.js)**
      (raw `.user.js`; installed copies auto-update from this URL).
 3. Go to `https://global.americanexpress.com/`, log in, and click the
-   **Offers** button that appears at the top-right.
+   **Amex 助手** button that appears on the page.
 
 ## Use
 
-1. Click **Offers** — the panel loads every card and its offers.
-2. Tick an offer to queue it for **all** its eligible cards, or click **cards**
-   to pick specific ones. Already-added cards are disabled.
-3. Click **Add selected** — this enrolls immediately. All cards for the *same*
-   offer are enrolled concurrently (once one card takes an offer, Amex can make
-   it ineligible on the others, so firing together is what lets more than one
-   card win); different offers are paced a bit apart. When done, the footer
-   shows `verified / failed / ghost` counts and the console prints a
-   per-(offer, card) table.
+1. Click **Amex 助手** — the panel reads every card and its offers.
+2. Tick an offer to queue it for **all** its eligible cards, or expand it to
+   choose specific cards. Already-added cards are disabled.
+3. Click **加到所选卡** — this submits the selected Add to Card attempts. All
+   cards for the *same* offer are submitted together (once one card takes an
+   offer, Amex can make it ineligible on the others, so submitting together is
+   what lets more than one card win); different offers are paced a bit apart.
+   When done, the panel re-reads the added-to-card lists and reports
+   `confirmed / failed / suspected dedupe / unconfirmed` results.
 
-`ghost` = the enroll request reported success but the offer was **not** found on
-re-read — usually American Express's per-person de-duplication silently
-dropping it. This is expected, not a bug (see `DISCLAIMER.md`).
+`suspected dedupe` = Amex returned success, but the offer was **not** found on
+that card after re-reading the added-to-card list. This is commonly caused by
+American Express allowing the same offer on only one card. It is expected, not a
+tool bug (see `DISCLAIMER.md`).
 
 ## Development
 
