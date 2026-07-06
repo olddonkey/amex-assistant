@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.8.0
+// @version      0.9.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -43,16 +43,17 @@
   'use strict';
 
   /**
-   * @typedef {{token: string, tag: string, name: string,
-   *            eligible: !Array<!Object>, enrolled: !Array<!Object>,
-   *            enrolledKeys: !Set<string>}} CardSnapshot
+   * @typedef {{token: string, tag: string, name: string, shortName: string,
+   *            art: string, eligible: !Array<!Object>,
+   *            enrolled: !Array<!Object>, enrolledKeys: !Set<string>}}
+   *     CardSnapshot
    */
 
   /**
    * A merchant offer grouped across the cards that can add it. `cards[i]`
    * carries that card's own `offerId` (the token to enroll with).
-   * @typedef {{key: string, name: string, description: string,
-   *            cards: !Array<{token: string, offerId: string,
+   * @typedef {{key: string, name: string, description: string, image: string,
+   *            expiry: string, cards: !Array<{token: string, offerId: string,
    *                           enrolled: boolean}>}} OfferGroup
    */
 
@@ -178,6 +179,8 @@
             key,
             name: offer.title || offer.name || key,
             description: offer.shortDescription || '',
+            image: offer.image || '',
+            expiry: getPath(offer, 'expiration.text') || '',
             cards: [],
           };
           byKey.set(key, group);
@@ -455,6 +458,22 @@
   }
 
   /**
+   * Builds a compact card label (product family + last digits) for tabs and
+   * chips, e.g. `Platinum ···31004`.
+   * @param {!Object} account Raw account object.
+   * @param {string} token The card's `account_token`.
+   * @return {string} Compact display label.
+   */
+  function cardShortName(account, token) {
+    const product = getPath(account, 'product.description') ||
+        getPath(account, 'profile.embossed_name') || '';
+    const family = product.replace(/\s*Card\b/gi, '').replace(/[®™]/g, '').trim();
+    const base = family || `…${String(token).slice(-4)}`;
+    const digits = cardDisplayDigits(account);
+    return digits ? `${base} ···${digits}` : base;
+  }
+
+  /**
    * Reads all cards and their eligible offers plus already-added group keys.
    * @return {!Promise<!Array<!CardSnapshot>>} Per-card snapshot.
    */
@@ -471,6 +490,8 @@
         token,
         tag: String(token).slice(-4),
         name: cardName(account, token),
+        shortName: cardShortName(account, token),
+        art: getPath(account, 'product.small_card_art') || '',
         eligible,
         enrolled,
         enrolledKeys,
@@ -535,14 +556,18 @@
    * @param {!Array<!Task>} tasks Flattened (offer, card) work items.
    * @param {{dryRun: (boolean|undefined),
    *          onProgress: (function(number, number)|undefined),
+   *          onSettle: (function(!Object)|undefined),
    *          delay: (function(): !Promise<void>|undefined)}=} options Behavior
-   *     overrides. `delay` (between offers) defaults to {@link randomDelay}.
+   *     overrides. `onSettle` fires with each attempt as its enroll settles
+   *     (before verification). `delay` (between offers) defaults to
+   *     {@link randomDelay}.
    * @return {!Promise<!Array<!EnrollResult>>} One result per task.
    */
   async function executeSelected(tasks, options = {}) {
     const {
       dryRun = false,
       onProgress = () => {},
+      onSettle = () => {},
       delay = randomDelay,
     } = options;
 
@@ -564,6 +589,7 @@
     for (let i = 0; i < offerGroups.length; i++) {
       const settled = await Promise.all(offerGroups[i].map(async (task) => {
         const attempt = await attemptEnroll(task);
+        onSettle(attempt);
         onProgress(++done, tasks.length);
         return attempt;
       }));
@@ -588,6 +614,7 @@
     offerGroupKey,
     getPath,
     cardName,
+    cardShortName,
     cardDisplayDigits,
     buildOfferIndex,
     addableCards,
@@ -617,22 +644,31 @@
   }
 
   // ---------------------------------------------------------------------------
-  // UI (browser only): a self-contained Shadow DOM panel. It renders our own
-  // offer list built from the API — it never touches Amex's native tiles.
+  // UI (browser only): a self-contained Shadow DOM panel styled after the "2a"
+  // design — Amex-official white header, single bright-blue accent, square
+  // corners, underline card tabs. It renders our own data built from the API;
+  // it never touches Amex's native tiles.
   // ---------------------------------------------------------------------------
 
   /**
-   * Shared UI state. `selected` maps an offer group key to the set of chosen
-   * card tokens.
-   * `lastResults` maps `"<offerKey>|<token>"` to the last run's result for that
-   * (offer, card), so the panel can show which cards succeeded/failed and why.
+   * Shared UI state.
    * @type {{cards: !Array<!CardSnapshot>, offers: !Array<!OfferGroup>,
    *         selected: !Map<string, !Set<string>>, query: string,
-   *         lastResults: !Map<string, !EnrollResult>}}
+   *         cardFilter: string, multiOnly: boolean,
+   *         lastResults: !Map<string, !EnrollResult>, view: string,
+   *         run: ?Object, errorMessage: string}}
    */
   const state = {
-    cards: [], offers: [], selected: new Map(), query: '',
+    cards: [],
+    offers: [],
+    selected: new Map(),
+    query: '',
+    cardFilter: 'all',
+    multiOnly: false,
     lastResults: new Map(),
+    view: 'list',
+    run: null,
+    errorMessage: '',
   };
 
   /** Panel host + shadow root, created lazily and reused across opens. */
@@ -644,18 +680,223 @@
   let loaded = false;
 
   /**
-   * Returns a card's display label.
-   * @param {string} token Card token.
-   * @return {string} Display label.
+   * Tiny DOM builder. `props`: `class`/`style`/`text` plus `on*` handlers and
+   * any attribute; data goes through `text`/children as text nodes (never
+   * innerHTML), so merchant/card strings can't inject markup.
+   * @param {string} tag Element tag.
+   * @param {!Object=} props Properties/attributes.
+   * @param {...(Node|string|null)} children Child nodes or text.
+   * @return {!Element} The element.
    */
+  function el(tag, props = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(props)) {
+      if (value == null) continue;
+      if (key === 'class') node.className = value;
+      else if (key === 'style') node.style.cssText = value;
+      else if (key === 'text') node.textContent = value;
+      else if (key.startsWith('on')) node[key.toLowerCase()] = value;
+      else node.setAttribute(key, value);
+    }
+    for (const child of children) {
+      if (child == null) continue;
+      node.append(child.nodeType ? child : document.createTextNode(child));
+    }
+    return node;
+  }
+
+  /** @param {string} token Card token. @return {?CardSnapshot} The card. */
+  function cardOf(token) {
+    return state.cards.find((c) => c.token === token) || null;
+  }
+
+  /** @param {string} token Card token. @return {string} Compact card label. */
   function cardLabel(token) {
-    const card = state.cards.find((c) => c.token === token);
-    return card ? card.name : `…${String(token).slice(-4)}`;
+    const card = cardOf(token);
+    return card ? card.shortName : `…${String(token).slice(-4)}`;
   }
 
   /**
-   * Expands the current selection into flat enroll tasks, resolving each
-   * card's own `offerId` and skipping cards that already have the offer.
+   * First 1-2 letters of a merchant name, for the logo fallback.
+   * @param {string} name Merchant name.
+   * @return {string} Initials.
+   */
+  function merchantInitials(name) {
+    const words = String(name).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/);
+    const letters = words.slice(0, 2).map((w) => w[0] || '').join('');
+    return (letters || String(name).slice(0, 2)).toUpperCase();
+  }
+
+  /** @param {!OfferGroup} g Offer group. @return {string} Short expiry, e.g. */
+  /**   "至 7/7". */
+  function expiryLabel(g) {
+    const match = /(\d{1,2})\/(\d{1,2})/.exec(g.expiry || '');
+    return match ? `至 ${match[1]}/${match[2]}` : '';
+  }
+
+  const PANEL_STYLE = `
+    :host { all: initial; }
+    * { box-sizing: border-box; }
+    .p {
+      --blue: #006FCF; --navy: #00175A; --green: #0B7A3E; --red: #C8102E;
+      --amber: #9A6A00; --ink: #26282A; --sub: #55585D; --mut: #7A7D82;
+      --fog: #9A9DA2; --line: #E7E8EA; --line2: #EFF0F1; --card: #F2F3F4;
+      font: 13px/1.4 'Helvetica Neue', Helvetica, system-ui, sans-serif;
+      color: var(--ink); background: #fff; border: 1px solid #d9dbde;
+      border-radius: 6px; width: 400px; max-height: 80vh; display: flex;
+      flex-direction: column; overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0,23,90,.18);
+    }
+    .hd {
+      display: flex; align-items: center; gap: 11px; padding: 14px 18px;
+      background: #fff; border-bottom: 2px solid var(--blue); flex: none;
+    }
+    .hd.err { border-bottom-color: var(--red); }
+    .ic {
+      width: 30px; height: 30px; border-radius: 5px; background: var(--blue);
+      color: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: 17px; font-weight: 600; line-height: 1; flex: none;
+    }
+    .hd .tt { flex: 1; min-width: 0; }
+    .t1 { font-size: 14.5px; font-weight: 800; color: var(--navy);
+      letter-spacing: .1px; }
+    .t2 { font-size: 10.5px; color: var(--mut); margin-top: 1px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rf {
+      width: 28px; height: 28px; border-radius: 50%; border: 1px solid #E3E5E8;
+      background: #fff; color: #53565A; font-size: 15px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex: none;
+    }
+    .cl { font-size: 18px; color: #8B8E93; cursor: pointer; line-height: 1;
+      background: none; border: none; padding: 0 2px; flex: none; }
+    .body { overflow-y: auto; }
+    .sr { padding: 12px 18px 0; }
+    .sr input {
+      width: 100%; border: 1px solid #D5D7DB; border-radius: 4px;
+      padding: 8px 12px; font: inherit; color: var(--ink); outline: none;
+    }
+    .sr input:focus { border-color: var(--blue); }
+    .tabs {
+      display: flex; gap: 18px; padding: 12px 18px 0; overflow-x: auto;
+      border-bottom: 1px solid var(--line); font-size: 12px;
+    }
+    .tab { padding-bottom: 9px; color: var(--sub); cursor: pointer;
+      white-space: nowrap; border-bottom: 2px solid transparent; }
+    .tab.on { font-weight: 700; color: var(--navy); border-bottom-color: var(--blue); }
+    .tab .n { color: var(--fog); }
+    .tb {
+      display: flex; align-items: center; padding: 9px 18px; font-size: 11.5px;
+      border-bottom: 1px solid var(--line2);
+    }
+    .tb label { display: flex; align-items: center; gap: 6px; color: var(--sub);
+      cursor: pointer; }
+    .tb .sp { flex: 1; }
+    .tb .ac { display: flex; gap: 14px; font-weight: 600; }
+    .tb .ac a { cursor: pointer; }
+    .a-blue { color: var(--blue); }
+    .a-mut { color: var(--fog); }
+    .list { display: flex; flex-direction: column; }
+    .row { display: flex; gap: 11px; padding: 13px 18px; align-items: center;
+      border-bottom: 1px solid var(--line2); }
+    .row.done { opacity: .5; }
+    .grp.exp { box-shadow: inset 2px 0 0 var(--blue); background: #FBFDFF; }
+    .grp.exp > .row { border-bottom: none; padding-bottom: 8px; }
+    .logo {
+      width: 40px; height: 40px; border-radius: 4px; flex: none; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; background: #E7F0FA; color: #1B62A8;
+    }
+    .logo img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+    .mn { flex: 1; min-width: 0; }
+    .nm { font-size: 13px; font-weight: 700; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ds { font-size: 12px; color: var(--sub); margin-top: 1px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rt { text-align: right; flex: none; }
+    .bd { font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer;
+      font-variant-numeric: tabular-nums; color: var(--blue); }
+    .bd .dot { color: #C9CCD0; }
+    .bd .en { color: var(--green); }
+    .bd .car { font-size: 9px; margin-left: 2px; }
+    .ex { font-size: 10.5px; color: var(--fog); margin-top: 2px;
+      font-variant-numeric: tabular-nums; }
+    .done-tag { font-size: 11px; color: var(--green); white-space: nowrap; }
+    .cards { margin: 0 18px 13px 67px; display: flex; flex-direction: column; }
+    .cards .lb { font-size: 10px; font-weight: 700; color: var(--fog);
+      letter-spacing: .6px; padding: 4px 0 7px; }
+    .ccard { display: flex; align-items: center; gap: 9px; font-size: 12px;
+      color: var(--ink); padding: 4px 0; cursor: pointer; }
+    .ccard.off { color: #B4B7BB; cursor: default; }
+    .sw { width: 28px; height: 18px; border-radius: 2.5px; flex: none;
+      overflow: hidden; background: linear-gradient(135deg,#dfe2e6,#b3b9c1); }
+    .sw img { width: 100%; height: 100%; object-fit: cover; }
+    .ccard .mk { margin-left: auto; font-size: 10.5px; font-weight: 600; }
+    .ccard .mk.en { color: var(--green); }
+    .ccard .mk.r-failed { color: var(--red); }
+    .ccard .mk.r-ghost { color: var(--amber); }
+    .ccard .mk.r-unverified { color: var(--mut); }
+    input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--blue);
+      flex: none; }
+    .ccard input[type=checkbox] { width: 14px; height: 14px; }
+    .ft { border-top: 1px solid var(--line); padding: 12px 18px; display: flex;
+      align-items: center; gap: 12px; background: #fff; flex: none; }
+    .ft .sm { flex: 1; font-size: 12px; color: var(--sub); }
+    .ft .sm b { color: var(--ink); }
+    .dry { display: flex; align-items: center; gap: 5px; font-size: 12px;
+      color: var(--sub); cursor: pointer; }
+    .go { background: var(--blue); color: #fff; font-size: 13px; font-weight: 700;
+      border: none; border-radius: 4px; padding: 10px 22px; cursor: pointer;
+      white-space: nowrap; }
+    .go:disabled { opacity: .55; cursor: default; }
+    .cnt { display: flex; background: #fff; border-bottom: 1px solid var(--line); }
+    .cnt .c { flex: 1; padding: 14px 0; text-align: center; }
+    .cnt .c .n { font-size: 21px; font-weight: 800;
+      font-variant-numeric: tabular-nums; }
+    .cnt .c .l { font-size: 10.5px; color: var(--sub); margin-top: 2px; }
+    .cnt .sep { width: 1px; background: var(--line); margin: 12px 0; }
+    .g { color: var(--green); } .r { color: var(--red); }
+    .b { color: var(--blue); } .am { color: var(--amber); }
+    .bar { height: 4px; border-radius: 2px; background: #EDEEF0; overflow: hidden; }
+    .bar > div { height: 100%; background: var(--blue); transition: width .2s; }
+    .note { font-size: 11px; color: var(--mut); }
+    .info { margin: 12px 18px 0; background: #F7F8F9; border: 1px solid #EDEEF0;
+      border-radius: 4px; padding: 9px 12px; font-size: 11px; color: var(--sub);
+      line-height: 1.55; }
+    .info b { color: var(--amber); }
+    .sh { font-size: 10px; font-weight: 700; color: var(--fog);
+      letter-spacing: .6px; padding: 10px 0 5px; }
+    .si { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0;
+      border-bottom: 1px solid var(--line2); font-size: 12px; color: var(--ink); }
+    .si:last-child { border-bottom: none; }
+    .ri { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+      border-bottom: 1px solid var(--line2); font-size: 12px; color: var(--ink); }
+    .ri .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .ri .st { font-size: 11px; font-weight: 600; }
+    .spin { width: 16px; height: 16px; border-radius: 50%; flex: none;
+      border: 2px solid #D4E8F8; border-top-color: var(--blue);
+      animation: dvspin .9s linear infinite; }
+    @keyframes dvspin { to { transform: rotate(360deg); } }
+    .msg { padding: 34px 24px; text-align: center; }
+    .msg .cir { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 12px;
+      display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .msg .cir.ok { background: #E9F5EE; color: var(--green); }
+    .msg .cir.bad { background: #FCEDEF; color: var(--red); font-weight: 700; }
+    .msg .h { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+    .msg .txt { font-size: 12px; color: var(--mut); margin-top: 5px;
+      line-height: 1.55; }
+    .msg .btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px;
+      border: 1px solid #D5D7DB; border-radius: 4px; padding: 8px 16px;
+      font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; }
+    .msg .btn.pri { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .lnk { font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; }
+    .lnk.rerun { border: 1px solid var(--red); color: var(--red); border-radius: 4px;
+      padding: 8px 16px; font-weight: 700; }
+  `;
+
+  /**
+   * Expands the current selection into flat enroll tasks, resolving each card's
+   * own `offerId` and skipping cards that already have the offer.
    * @return {!Array<!Task>} Tasks to run.
    */
   function buildTasks() {
@@ -673,242 +914,82 @@
     return tasks;
   }
 
-  const AMEX_BLUE = '#006fcf';
-  const PANEL_STYLE = `
-    :host { all: initial; }
-    * { box-sizing: border-box; }
-    .panel {
-      font: 13px -apple-system, system-ui, sans-serif; color: #1a1a1a;
-      background: #fff; border: 1px solid #d8dee4; border-radius: 12px;
-      width: 460px; max-height: 78vh; display: flex; flex-direction: column;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, .22); overflow: hidden;
-    }
-    header {
-      padding: 12px 14px; display: flex; align-items: center;
-      justify-content: space-between; background: ${AMEX_BLUE}; color: #fff;
-    }
-    header .title { font-weight: 600; font-size: 14px; }
-    header .sub { font-size: 11px; opacity: .85; margin-left: 8px; }
-    header button {
-      all: unset; cursor: pointer; font-size: 18px; line-height: 1;
-      padding: 0 4px; opacity: .9;
-    }
-    .search { padding: 10px 14px 6px; }
-    .search input {
-      width: 100%; padding: 7px 10px; font: inherit; border: 1px solid #d8dee4;
-      border-radius: 8px; outline: none;
-    }
-    .search input:focus { border-color: ${AMEX_BLUE}; }
-    .body { overflow-y: auto; padding: 4px 6px 8px; }
-    .row {
-      display: flex; align-items: center; gap: 10px; padding: 8px 8px;
-      border-radius: 8px;
-    }
-    .row:hover { background: #f5f8fb; }
-    .row .main { flex: 1; min-width: 0; }
-    .row .name {
-      font-weight: 600; white-space: nowrap; overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .row .desc {
-      font-size: 11px; color: #6b7280; white-space: nowrap; overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .pill {
-      font-size: 11px; color: ${AMEX_BLUE}; background: #eaf3fb;
-      border-radius: 999px; padding: 2px 8px; white-space: nowrap;
-    }
-    .pill.done { color: #4b5563; background: #eef0f2; }
-    .expand {
-      all: unset; cursor: pointer; color: ${AMEX_BLUE}; font-size: 12px;
-      padding: 2px 4px;
-    }
-    .cards {
-      display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 8px 10px 34px;
-    }
-    .chip {
-      display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
-      border: 1px solid #d8dee4; border-radius: 999px; padding: 3px 9px;
-      cursor: pointer;
-    }
-    .chip.off { opacity: .5; cursor: default; }
-    .chip.r-verified { border-color: #1a8f3c; color: #1a8f3c; opacity: 1; }
-    .chip.r-ghost { border-color: #e08600; color: #e08600; }
-    .chip.r-failed { border-color: #d33; color: #d33; }
-    .chip.r-unverified { border-color: #6b7280; color: #6b7280; }
-    .result { font-size: 11px; white-space: nowrap; }
-    .result .v, .runhead .v { color: #1a8f3c; }
-    .result .g, .runhead .g { color: #e08600; }
-    .result .f, .runhead .f { color: #d33; }
-    .result .u, .runhead .u { color: #6b7280; }
-    .runbanner {
-      background: #f7f9fb; border: 1px solid #dbe7f2; border-radius: 8px;
-      padding: 8px 10px; margin: 4px 2px 8px; font-size: 12px;
-    }
-    .runhead {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 4px;
-    }
-    .runline { color: #444; padding: 2px 0; }
-    .empty { padding: 8px; color: #6b7280; }
-    footer {
-      padding: 10px 14px; display: flex; align-items: center; gap: 12px;
-      border-top: 1px solid #eef0f2; background: #fafbfc;
-    }
-    footer label { display: flex; align-items: center; gap: 5px; }
-    .prog { flex: 1; color: #4b5563; font-size: 12px; }
-    .go {
-      all: unset; cursor: pointer; background: ${AMEX_BLUE}; color: #fff;
-      font-weight: 600; padding: 7px 14px; border-radius: 8px;
-    }
-    .go[disabled] { opacity: .5; cursor: default; }
-    input[type=checkbox] { accent-color: ${AMEX_BLUE}; }
-  `;
-
-  /**
-   * Creates the panel host, attaches a shadow root, and wires up controls.
-   * @return {!ShadowRoot} The panel's shadow root.
-   */
-  function createPanel() {
-    const host = document.createElement('div');
-    host.style.cssText =
-        'position:fixed;top:16px;right:16px;z-index:2147483647';
-    document.body.appendChild(host);
-    panelHost = host;
-    const root = host.attachShadow({mode: 'open'});
-    panelRoot = root;
-    root.innerHTML = `
-      <style>${PANEL_STYLE}</style>
-      <div class="panel">
-        <header>
-          <span><span class="title">Amex Assistant</span
-            ><span class="sub" id="sub"></span></span>
-          <span>
-            <button id="refresh" title="Refresh">↻</button>
-            <button id="close" title="Close">×</button>
-          </span>
-        </header>
-        <div class="search">
-          <input id="q" type="search" placeholder="Search offers…">
-        </div>
-        <div class="body" id="list">Loading…</div>
-        <footer>
-          <label><input type="checkbox" id="dry" checked> Dry-run</label>
-          <span class="prog" id="prog"></span>
-          <button class="go" id="go">Add selected</button>
-        </footer>
-      </div>`;
-    root.getElementById('close').onclick = () => hidePanel();
-    root.getElementById('refresh').onclick = () => refresh(root);
-    root.getElementById('go').onclick = () => runSelected(root);
-    root.getElementById('q').oninput = (e) => {
-      state.query = e.target.value.trim().toLowerCase();
-      renderOfferList(root);
-    };
-    return root;
+  /** @return {!Array<!OfferGroup>} Offers matching filters + query. */
+  function visibleOffers() {
+    const q = state.query;
+    return state.offers.filter((g) => {
+      if (q && !g.name.toLowerCase().includes(q)) return false;
+      if (state.cardFilter !== 'all' &&
+          !g.cards.some((c) => c.token === state.cardFilter)) {
+        return false;
+      }
+      if (state.multiOnly && addableCards(g).length < 2) return false;
+      return true;
+    });
   }
 
-  /**
-   * Renders one offer row plus its (hidden until expanded) per-card chips.
-   * @param {!OfferGroup} group Offer group to render.
-   * @return {!DocumentFragment} Row and its card box.
-   */
+  /** @return {number} Total selected (offer, card) pairs. */
+  function selectedCount() {
+    let n = 0;
+    for (const set of state.selected.values()) n += set.size;
+    return n;
+  }
+
+  // ---- rendering -----------------------------------------------------------
+
+  /** @param {!OfferGroup} group Group. @return {!DocumentFragment} Row. */
   function renderOfferRow(group) {
-    const fragment = document.createDocumentFragment();
+    const frag = document.createDocumentFragment();
+    const wrap = el('div', {class: 'grp'});
     const addable = addableCards(group);
     const addedCount = group.cards.length - addable.length;
+    const fullyAdded = addable.length === 0;
 
-    const row = document.createElement('div');
-    row.className = 'row';
-    const pick = document.createElement('input');
-    pick.type = 'checkbox';
-    pick.disabled = addable.length === 0;
-
-    const main = document.createElement('div');
-    main.className = 'main';
-    const name = document.createElement('div');
-    name.className = 'name';
-    name.textContent = group.name;
-    main.appendChild(name);
-    if (group.description) {
-      const desc = document.createElement('div');
-      desc.className = 'desc';
-      desc.textContent = group.description;
-      main.appendChild(desc);
+    const logo = el('div', {class: 'logo'});
+    if (group.image) {
+      logo.append(el('img', {src: group.image, alt: '', loading: 'lazy'}));
+    } else {
+      logo.textContent = merchantInitials(group.name);
     }
 
-    const pill = document.createElement('span');
-    pill.className = addable.length ? 'pill' : 'pill done';
-    pill.textContent = addedCount ?
-      `${addable.length} to add · ${addedCount} on card` :
-      `${addable.length} cards`;
-    const expand = document.createElement('button');
-    expand.className = 'expand';
-    expand.textContent = 'cards ▾';
+    const pick = el('input', {type: 'checkbox'});
+    pick.disabled = fullyAdded;
+    pick.checked = (state.selected.get(group.key)?.size || 0) > 0;
 
-    // If this offer was part of the last run, show a per-offer outcome badge
-    // (in place of the pill) so successes/failures are visible without
-    // expanding.
-    const runStates = group.cards
-      .map((c) => state.lastResults.get(`${group.key}|${c.token}`))
-      .filter(Boolean)
-      .map((r) => r.state);
-    let resultBadge = null;
-    if (runStates.length > 0) {
-      const n = (s) => runStates.filter((x) => x === s).length;
-      resultBadge = document.createElement('span');
-      resultBadge.className = 'result';
-      const unv = n(ResultState.UNVERIFIED);
-      resultBadge.innerHTML =
-          `<span class="v">✓${n(ResultState.VERIFIED)}</span> ` +
-          `<span class="g">⚠${n(ResultState.GHOST)}</span> ` +
-          `<span class="f">✗${n(ResultState.FAILED)}</span>` +
-          (unv ? ` <span class="u">?${unv}</span>` : '');
-    }
+    const main = el('div', {class: 'mn'},
+      el('div', {class: 'nm', text: group.name}),
+      group.description ? el('div', {class: 'ds', text: group.description}) :
+        null);
 
-    const box = document.createElement('div');
-    box.className = 'cards';
+    const box = el('div', {class: 'cards'});
     box.style.display = 'none';
 
-    const syncPick = () => {
-      pick.checked = (state.selected.get(group.key)?.size || 0) > 0;
-    };
-    const renderChips = () => {
-      box.textContent = '';
-      const chosen = state.selected.get(group.key) || new Set();
-      for (const card of group.cards) {
-        const result = state.lastResults.get(`${group.key}|${card.token}`);
-        const st = result && result.state;
-        const chip = document.createElement('label');
-        let chipClass = 'chip';
-        if (card.enrolled) chipClass += ' off';
-        if (st) chipClass += ` r-${st}`;
-        chip.className = chipClass;
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = chosen.has(card.token);
-        cb.disabled = card.enrolled;
-        cb.onchange = () => {
-          const set = state.selected.get(group.key) || new Set();
-          if (cb.checked) {
-            set.add(card.token);
-          } else {
-            set.delete(card.token);
-          }
-          if (set.size) {
-            state.selected.set(group.key, set);
-          } else {
-            state.selected.delete(group.key);
-          }
-          syncPick();
-        };
-        let mark = '';
-        if (card.enrolled) mark = ' ✓';
-        else if (st) mark = ` ${stateMark(st)}`;
-        chip.append(cb, document.createTextNode(cardLabel(card.token) + mark));
-        box.appendChild(chip);
+    const rt = el('div', {class: 'rt'});
+    if (fullyAdded) {
+      rt.append(el('div', {class: 'done-tag',
+        text: `已加全部 ${group.cards.length} 卡`}));
+    } else {
+      const badge = el('div', {class: 'bd'});
+      if (addedCount) {
+        badge.append(
+          el('span', {text: `可加 ${addable.length}`}),
+          el('span', {class: 'dot', text: ' · '}),
+          el('span', {class: 'en', text: `已加 ${addedCount}`}),
+          el('span', {class: 'car', text: ' ▾'}));
+      } else {
+        badge.append(el('span', {text: `可加 ${addable.length}`}),
+          el('span', {class: 'car', text: ' ▾'}));
       }
-    };
+      badge.onclick = () => toggleExpand(wrap, box, badge, group);
+      rt.append(badge);
+    }
+    const exp = expiryLabel(group);
+    if (exp) rt.append(el('div', {class: 'ex', text: exp}));
+
+    const runStates = group.cards
+      .map((c) => state.lastResults.get(`${group.key}|${c.token}`))
+      .filter(Boolean).map((res) => res.state);
+    if (runStates.length) rt.prepend(renderRunBadge(runStates));
 
     pick.onchange = () => {
       if (pick.checked) {
@@ -916,211 +997,573 @@
       } else {
         state.selected.delete(group.key);
       }
-      if (box.style.display !== 'none') renderChips();
-    };
-    expand.onclick = () => {
-      box.style.display = box.style.display === 'none' ? 'flex' : 'none';
-      renderChips();
+      if (box.style.display !== 'none') renderCardBox(box, group, pick);
+      refreshFooter();
     };
 
-    row.append(pick, main, resultBadge || pill, expand);
-    fragment.append(row, box);
-    return fragment;
+    if (fullyAdded) wrap.classList.add('done');
+    wrap.append(el('div', {class: 'row'}, pick, logo, main, rt), box);
+    frag.append(wrap);
+    return frag;
   }
 
   /**
-   * Builds the "last run" banner: overall counts plus a line per non-verified
-   * (offer, card) with its error/ghost message, so failures are visible even if
-   * the card dropped out of the offer's list on the post-run refresh.
-   * @return {?Element} The banner, or null if there was no run.
+   * @param {!Array<string>} states Result states for a group.
+   * @return {!Element} The per-offer outcome badge.
    */
-  function renderRunSummary() {
-    if (state.lastResults.size === 0) return null;
+  function renderRunBadge(states) {
+    const n = (s) => states.filter((x) => x === s).length;
+    const badge = el('div', {class: 'bd', style: 'cursor:default'});
+    badge.append(el('span', {class: 'en', text: `✓${n(ResultState.VERIFIED)}`}),
+      el('span', {class: 'dot', text: ' '}),
+      el('span', {class: 'am', text: `⚠${n(ResultState.GHOST)}`}),
+      el('span', {class: 'dot', text: ' '}),
+      el('span', {class: 'r', text: `✗${n(ResultState.FAILED)}`}));
+    return badge;
+  }
+
+  /**
+   * Toggles the per-card list under an offer row.
+   * @param {!Element} wrap Group wrapper. @param {!Element} box Card box.
+   * @param {!Element} badge Badge (for the caret). @param {!OfferGroup} group
+   *     Offer group.
+   */
+  function toggleExpand(wrap, box, badge, group) {
+    const open = box.style.display === 'none';
+    box.style.display = open ? 'flex' : 'none';
+    wrap.classList.toggle('exp', open);
+    const caret = badge.querySelector('.car');
+    if (caret) caret.textContent = open ? ' ▴' : ' ▾';
+    if (open) renderCardBox(box, group, wrap.querySelector('.row input'));
+  }
+
+  /**
+   * Renders the per-card checkboxes for an expanded offer.
+   * @param {!Element} box Card box. @param {!OfferGroup} group Offer group.
+   * @param {!Element} pick The offer-row checkbox (kept in sync).
+   */
+  function renderCardBox(box, group, pick) {
+    box.textContent = '';
+    box.append(el('div', {class: 'lb', text: '加到哪些卡'}));
+    const chosen = state.selected.get(group.key) || new Set();
+    for (const card of group.cards) {
+      const result = state.lastResults.get(`${group.key}|${card.token}`);
+      const cb = el('input', {type: 'checkbox'});
+      cb.checked = chosen.has(card.token);
+      cb.disabled = card.enrolled;
+      const sw = el('span', {class: 'sw'});
+      const cardData = cardOf(card.token);
+      if (cardData?.art) sw.append(el('img', {src: cardData.art, alt: ''}));
+      const label = el('label', {class: card.enrolled ? 'ccard off' : 'ccard'},
+        cb, sw, cardLabel(card.token));
+      if (card.enrolled) {
+        label.append(el('span', {class: 'mk en', text: '已加 ✓'}));
+      } else if (result) {
+        const mk = {[ResultState.FAILED]: '✗', [ResultState.GHOST]: '⚠',
+          [ResultState.UNVERIFIED]: '?', [ResultState.VERIFIED]: '✓'};
+        label.append(el('span', {class: `mk r-${result.state}`,
+          text: mk[result.state] || ''}));
+      }
+      cb.onchange = () => {
+        const set = state.selected.get(group.key) || new Set();
+        if (cb.checked) set.add(card.token); else set.delete(card.token);
+        if (set.size) state.selected.set(group.key, set);
+        else state.selected.delete(group.key);
+        pick.checked = (state.selected.get(group.key)?.size || 0) > 0;
+        refreshFooter();
+      };
+      box.append(label);
+    }
+  }
+
+  /**
+   * Builds the header row.
+   * @param {{glyph: (string|Node), title: string, subtitle: string,
+   *          refresh: (boolean|undefined), close: (boolean|undefined),
+   *          err: (boolean|undefined), right: (Node|undefined)}} opts Header
+   *     options.
+   * @return {!Element} The header element.
+   */
+  function renderHeader(opts) {
+    const hd = el('div', {class: opts.err ? 'hd err' : 'hd'});
+    hd.append(el('div', {class: 'ic'}, opts.glyph));
+    hd.append(el('div', {class: 'tt'},
+      el('div', {class: 't1', text: opts.title}),
+      opts.subtitle ? el('div', {class: 't2', text: opts.subtitle}) : null));
+    if (opts.right) hd.append(opts.right);
+    if (opts.refresh) {
+      hd.append(el('button', {class: 'rf', title: 'Refresh', text: '↻',
+        onclick: () => refresh()}));
+    }
+    if (opts.close) {
+      hd.append(el('button', {class: 'cl', title: 'Close', text: '×',
+        onclick: () => hidePanel()}));
+    }
+    return hd;
+  }
+
+  /** Rebuilds the whole panel for the current `state.view`. */
+  function render() {
+    if (!panelRoot) return;
+    const root = panelRoot;
+    root.getElementById('shell').textContent = '';
+    const shell = root.getElementById('shell');
+    const views = {list: renderListView, loading: renderLoadingView,
+      running: renderRunningView, result: renderResultView,
+      empty: renderEmptyView, error: renderErrorView};
+    (views[state.view] || renderListView)(shell);
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderListView(shell) {
+    const count = `${state.offers.length} offers · ${state.cards.length} cards`;
+    shell.append(renderHeader({
+      glyph: '＋', title: 'Amex 助手',
+      subtitle: `一个 offer，加到多张卡 · ${count}`,
+      refresh: true, close: true,
+    }));
+
+    const body = el('div', {class: 'body'});
+
+    const search = el('input', {type: 'search', value: state.query,
+      placeholder: '⌕ 搜索商户 · Search offers'});
+    search.oninput = (e) => {
+      state.query = e.target.value.trim().toLowerCase();
+      renderRows(body);
+    };
+    body.append(el('div', {class: 'sr'}, search));
+
+    const tabs = el('div', {class: 'tabs'});
+    const addTab = (key, label, sub) => {
+      const cls = state.cardFilter === key ? 'tab on' : 'tab';
+      const tab = el('div', {class: cls}, label);
+      if (sub) tab.append(el('span', {class: 'n', text: ` ${sub}`}));
+      tab.onclick = () => {
+        state.cardFilter = key;
+        render();
+      };
+      tabs.append(tab);
+    };
+    addTab('all', '全部卡');
+    for (const card of state.cards) {
+      const digits = cardDisplayDigits(cardRaw(card)) ||
+          String(card.token).slice(-4);
+      addTab(card.token, familyOf(card), `…${digits}`);
+    }
+    body.append(tabs);
+
+    const tb = el('div', {class: 'tb'});
+    const multi = el('input', {type: 'checkbox'});
+    multi.checked = state.multiOnly;
+    multi.onchange = () => {
+      state.multiOnly = multi.checked;
+      renderRows(body);
+    };
+    tb.append(el('label', {}, multi, '只看多卡可加'), el('div', {class: 'sp'}),
+      el('div', {class: 'ac'},
+        el('a', {class: 'a-blue', text: '全选可加',
+          onclick: () => selectAllVisible(body)}),
+        el('a', {class: 'a-mut', text: '清空',
+          onclick: () => clearSelection(body)})));
+    body.append(tb);
+
+    const list = el('div', {class: 'list', id: 'list'});
+    body.append(list);
+    shell.append(body);
+    renderRows(body);
+
+    shell.append(renderFooter());
+  }
+
+  /** @param {!Element} body Panel body (contains #list). */
+  function renderRows(body) {
+    const list = body.querySelector('#list');
+    list.textContent = '';
+    const shown = visibleOffers();
+    for (const group of shown) list.append(renderOfferRow(group));
+    if (shown.length === 0) {
+      list.append(el('div', {class: 'msg',
+        style: 'padding:24px'}, el('div', {class: 'note', text: '无匹配 offer'})));
+    }
+    refreshFooter();
+  }
+
+  /** @return {!Element} The list-view footer. */
+  function renderFooter() {
+    const dry = el('input', {type: 'checkbox', id: 'dry'});
+    dry.checked = true;
+    const sm = el('div', {class: 'sm', id: 'sm'});
+    const go = el('button', {class: 'go', id: 'go', text: '加入所选',
+      onclick: () => runSelected()});
+    return el('div', {class: 'ft'},
+      el('label', {class: 'dry'}, dry, 'Dry-run'), sm, go);
+  }
+
+  /** Updates the footer summary + button enabled state. */
+  function refreshFooter() {
+    if (!panelRoot) return;
+    const sm = panelRoot.getElementById('sm');
+    const go = panelRoot.getElementById('go');
+    if (!sm || !go) return;
+    const offers = state.selected.size;
+    const pairs = selectedCount();
+    sm.textContent = '';
+    sm.append(document.createTextNode('已选 '),
+      el('b', {text: String(offers)}),
+      document.createTextNode(' 个 offer · '),
+      el('b', {text: String(pairs)}),
+      document.createTextNode(' 次添加，并行发出'));
+    go.disabled = pairs === 0;
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderLoadingView(shell) {
+    shell.append(renderHeader({glyph: '＋', title: 'Amex 助手',
+      subtitle: '一个 offer，加到多张卡', close: true}));
+    const pr = state.run || {done: 0, total: state.cards.length || 1};
+    const pct = pr.total ? Math.round(pr.done / pr.total * 100) : 0;
+    const body = el('div', {class: 'body', style: 'padding:20px 18px'});
+    const rowStyle = 'display:flex;justify-content:space-between;' +
+        'align-items:baseline;margin-bottom:8px';
+    body.append(el('div', {style: rowStyle},
+      el('div', {style: 'font-size:13px;font-weight:700',
+        text: '正在读取每张卡的 offers…'}),
+      el('div', {class: 'note', text: `第 ${pr.done} / ${pr.total} 张卡`})));
+    body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
+      el('div', {style: `width:${pct}%`})));
+    body.append(el('div', {class: 'note', text: '只读快照，不会改动你的账户'}));
+    shell.append(body);
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderRunningView(shell) {
+    const run = state.run;
+    const seen = run.results.length;
+    const ok = run.results.filter((r) => r.reportedOk).length;
+    const fail = run.results.filter((r) => !r.reportedOk).length;
+    const pending = run.total - seen;
+    const pct = run.total ? Math.round(seen / run.total * 100) : 0;
+    shell.append(renderHeader({glyph: el('span', {class: 'spin'}),
+      title: '正在添加…',
+      subtitle: `${run.total} 个请求已并行发出`,
+      right: el('div', {class: 'b', style: 'font-size:12px;font-weight:700',
+        text: `${run.results.length} / ${run.total} 已返回`})}));
+    const body = el('div', {class: 'body'});
+    body.append(el('div', {style: 'padding:16px 18px 0'},
+      el('div', {class: 'bar'}, el('div', {style: `width:${pct}%`}))));
+    body.append(counters([
+      {n: ok, l: '成功返回', c: 'g'}, {n: fail, l: '失败', c: 'r'},
+      {n: pending, l: '请求中', c: 'b'}]));
+    const rl = el('div', {style: 'padding:4px 18px 8px'});
+    const settledIds = new Set(run.results.map((r) => `${r.key}|${r.token}`));
+    for (const task of run.tasks) {
+      const done = run.results.find(
+        (r) => r.key === task.key && r.token === task.token);
+      const txt = `${task.name} → ${cardLabel(task.token)}`;
+      let icon; let stTxt; let stCls;
+      if (!done) {
+        icon = el('span', {class: 'spin'}); stTxt = '请求中'; stCls = 'st b';
+      } else if (done.reportedOk) {
+        icon = el('span', {class: 'g', text: '✓'}); stTxt = '已返回';
+        stCls = 'st g';
+      } else {
+        icon = el('span', {class: 'r', text: '✗'}); stTxt = '失败';
+        stCls = 'st r';
+      }
+      rl.append(el('div', {class: 'ri'}, icon,
+        el('div', {class: 'txt', text: txt}),
+        el('div', {class: stCls, text: stTxt})));
+    }
+    body.append(rl);
+    const footStyle = 'border-top:1px solid #E7E8EA;padding:11px 18px';
+    body.append(el('div', {style: footStyle},
+      el('div', {class: 'note',
+        text: '全部返回后自动重拉各卡已加列表做真实校验'})));
+    shell.append(body);
+    void settledIds;
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderResultView(shell) {
     const results = [...state.lastResults.values()];
     const n = (s) => results.filter((r) => r.state === s).length;
+    shell.append(renderHeader({glyph: '✓', title: '执行完成 · 已重新校验',
+      subtitle: `${results.length} 个请求并行发出`, close: true}));
+    const body = el('div', {class: 'body'});
+    body.append(counters([
+      {n: n(ResultState.VERIFIED), l: '已校验成功', c: 'g'},
+      {n: n(ResultState.FAILED), l: '请求失败', c: 'r'},
+      {n: n(ResultState.GHOST) + n(ResultState.UNVERIFIED), l: '假成功/未校验',
+        c: 'am'}]));
+    body.append(el('div', {class: 'info'},
+      el('b', {text: '什么是假成功？'}),
+      'Amex 服务端按人去重：同一 offer 多卡同抢，往往只认先到的那张。' +
+        '请求返回 SUCCESS 但校验时不在已加列表里的，归入此类；' +
+        '「未校验」是校验读取本身失败、无法判定。'));
 
-    const box = document.createElement('div');
-    box.className = 'runbanner';
-    const head = document.createElement('div');
-    head.className = 'runhead';
-    const counts = document.createElement('span');
-    counts.innerHTML =
-        `Last run: <span class="v">✓${n(ResultState.VERIFIED)}</span> ` +
-        `<span class="g">⚠${n(ResultState.GHOST)}</span> ` +
-        `<span class="f">✗${n(ResultState.FAILED)}</span> ` +
-        `<span class="u">?${n(ResultState.UNVERIFIED)}</span>`;
-    const dismiss = document.createElement('button');
-    dismiss.className = 'expand';
-    dismiss.textContent = 'dismiss';
-    dismiss.onclick = () => {
-      state.lastResults = new Map();
-      renderOfferList(panelRoot);
+    const section = (title, filter, glyph, cls) => {
+      const items = results.filter(filter);
+      if (!items.length) return;
+      body.append(el('div', {style: 'padding:0 18px'},
+        el('div', {class: 'sh', text: title})));
+      const wrap = el('div', {style: 'padding:0 18px 4px'});
+      for (const r of items) {
+        const right = r.state === ResultState.FAILED && r.message ?
+          el('span', {class: cls, style: 'font-size:11px',
+            text: `“${r.message}”`}) :
+          el('span', {class: cls, text: glyph});
+        wrap.append(el('div', {class: 'si'},
+          el('span', {text: `${r.name} → ${cardLabel(r.token)}`}), right));
+      }
+      body.append(wrap);
     };
-    head.append(counts, dismiss);
-    box.appendChild(head);
+    section('已校验成功', (r) => r.state === ResultState.VERIFIED, '✓', 'g');
+    section('请求失败', (r) => r.state === ResultState.FAILED, '✗', 'r');
+    section('假成功 — 返回成功但校验未出现',
+      (r) => r.state === ResultState.GHOST, '⚠', 'am');
+    section('未校验 — 校验读取失败',
+      (r) => r.state === ResultState.UNVERIFIED, '?', 'note');
 
-    for (const r of results.filter((x) => x.state !== ResultState.VERIFIED)) {
-      const line = document.createElement('div');
-      line.className = 'runline';
-      const mark = stateMark(r.state);
-      line.textContent = `${mark} ${r.name} · ${cardLabel(r.token)}` +
-          (r.message ? ` — ${r.message}` : '');
-      box.appendChild(line);
+    const retry = el('div', {class: 'lnk rerun', text: '重试失败项',
+      onclick: () => retryFailed()});
+    if (!results.some((r) => r.state === ResultState.FAILED)) {
+      retry.style.display = 'none';
     }
-    return box;
+    shell.append(body);
+    shell.append(el('div', {class: 'ft'},
+      el('div', {class: 'lnk', text: '导出 CSV', onclick: () => exportCsv()}),
+      el('div', {class: 'sp', style: 'flex:1'}), retry,
+      el('button', {class: 'go', text: '完成', onclick: () => backToList()})));
   }
 
   /**
-   * A short glyph for a result state.
-   * @param {string} resultState One of {@link ResultState}.
-   * @return {string} The glyph.
+   * @param {!Array<{n: number, l: string, c: string}>} cols Counter columns.
+   * @return {!Element} The 3-up counter strip.
    */
-  function stateMark(resultState) {
-    if (resultState === ResultState.FAILED) return '✗';
-    if (resultState === ResultState.GHOST) return '⚠';
-    if (resultState === ResultState.UNVERIFIED) return '?';
-    return '✓';
+  function counters(cols) {
+    const row = el('div', {class: 'cnt'});
+    cols.forEach((col, i) => {
+      if (i) row.append(el('div', {class: 'sep'}));
+      row.append(el('div', {class: 'c'},
+        el('div', {class: `n ${col.c}`, text: String(col.n)}),
+        el('div', {class: 'l', text: col.l})));
+    });
+    return row;
   }
 
+  /** @param {!Element} shell Panel content root. */
+  function renderEmptyView(shell) {
+    shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true}));
+    shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
+      el('div', {class: 'cir ok', text: '✓'}),
+      el('div', {class: 'h', text: '没有可加的 offer'}),
+      el('div', {class: 'txt',
+        text: '所有 offer 都已加到它们可用的卡上。'}),
+      el('div', {class: 'btn', onclick: () => refresh()}, '↻ 重新读取'))));
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderErrorView(shell) {
+    shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true,
+      err: true}));
+    shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
+      el('div', {class: 'cir bad', text: '!'}),
+      el('div', {class: 'h', text: '读取快照失败'}),
+      el('div', {class: 'txt', text: state.errorMessage ||
+          '登录态可能已过期。请先在本页登录 Amex，再重试。'}),
+      el('div', {class: 'btn pri', onclick: () => refresh()}, '重试'))));
+  }
+
+  // ---- helpers for card family / raw account -------------------------------
+
   /**
-   * Renders the offer list into the panel, honoring the search query.
-   * @param {!ShadowRoot} root Panel shadow root.
+   * @param {!CardSnapshot} card Card. @return {string} Product family (short).
    */
-  function renderOfferList(root) {
-    const list = root.getElementById('list');
-    list.textContent = '';
-    const summary = renderRunSummary();
-    if (summary) list.appendChild(summary);
-    const query = state.query;
-    const shown = query ?
-      state.offers.filter((g) => g.name.toLowerCase().includes(query)) :
-      state.offers;
-    for (const group of shown) {
-      list.appendChild(renderOfferRow(group));
-    }
-    if (shown.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'empty';
-      empty.textContent = 'No offers match.';
-      list.appendChild(empty);
-    }
+  function familyOf(card) {
+    return (card.shortName || '').replace(/\s*···.*$/, '') ||
+        `…${String(card.token).slice(-4)}`;
   }
 
   /**
-   * Runs the selection when the user clicks "Add selected", updating the footer
-   * with progress and the run summary. Always re-enables the button, and keeps
-   * the run's results even if the post-run refresh fails.
-   * @param {!ShadowRoot} root Panel shadow root.
+   * cardDisplayDigits works on a raw account; snapshot only kept `shortName`,
+   * which already embeds the digits, so re-derive from the label.
+   * @param {!CardSnapshot} card Card.
+   * @return {!Object} A shim account for cardDisplayDigits.
+   */
+  function cardRaw(card) {
+    const m = /···(\d+)/.exec(card.shortName || '');
+    return {display_account_number: m ? m[1] : ''};
+  }
+
+  // ---- selection helpers ---------------------------------------------------
+
+  /** @param {!Element} body Panel body. */
+  function selectAllVisible(body) {
+    for (const group of visibleOffers()) {
+      const addable = addableCards(group);
+      if (addable.length) {
+        state.selected.set(group.key, new Set(addable.map((c) => c.token)));
+      }
+    }
+    renderRows(body);
+  }
+
+  /** @param {!Element} body Panel body. */
+  function clearSelection(body) {
+    state.selected.clear();
+    renderRows(body);
+  }
+
+  // ---- run / retry / export ------------------------------------------------
+
+  /**
+   * Runs the current selection (or a given task list), driving the running and
+   * result views. Always returns to a usable view.
+   * @param {!Array<!Task>=} presetTasks Optional explicit tasks (retry).
    * @return {!Promise<void>} Resolves when the run finishes.
    */
-  async function runSelected(root) {
-    const dry = root.getElementById('dry').checked;
-    const prog = root.getElementById('prog');
-    const go = root.getElementById('go');
-    const tasks = buildTasks();
-    if (tasks.length === 0) {
-      prog.textContent = 'Nothing selected';
+  async function runSelected(presetTasks) {
+    const dry = panelRoot.getElementById('dry')?.checked ?? true;
+    const tasks = presetTasks || buildTasks();
+    if (tasks.length === 0) return;
+
+    if (dry) {
+      window.alert(`Dry-run：将并行发出 ${tasks.length} 个 (offer × 卡) 请求。` +
+          '\n取消勾选 Dry-run 后再点「加入所选」才会真正添加。');
       return;
     }
 
-    go.disabled = true;
+    state.view = 'running';
+    state.run = {tasks, total: tasks.length, results: []};
+    render();
     try {
       const results = await executeSelected(tasks, {
-        dryRun: dry,
-        onProgress: (done, total) => {
-          prog.textContent = `${done}/${total}…`;
+        onSettle: (attempt) => {
+          state.run.results.push(attempt);
+          render();
         },
       });
-
-      if (!dry) {
-        // Remember per-card outcomes so the list can annotate them.
-        state.lastResults = new Map(
-          results.map((r) => [`${r.key}|${r.token}`, r]));
-        state.selected.clear();
-        try {
-          // Re-read so added offers now show as on-card.
-          state.cards = await snapshot();
-          state.offers = buildOfferIndex(state.cards);
-        } catch {
-          // Keep the previous list; the run banner still shows the outcome.
-        }
-        renderOfferList(root);
-        root.getElementById('sub').textContent =
-            `${state.offers.length} offers · ${state.cards.length} cards`;
-      }
-
-      const count = (s) => results.filter((r) => r.state === s).length;
-      prog.textContent = dry ?
-        `dry-run: ${results.length} offer×card (nothing sent)` :
-        `verified ${count(ResultState.VERIFIED)} · ` +
-              `failed ${count(ResultState.FAILED)} · ` +
-              `ghost ${count(ResultState.GHOST)} · ` +
-              `unverified ${count(ResultState.UNVERIFIED)}`;
-      console.table(results.map((r) => ({
-        offer: r.name,
-        card: cardLabel(r.token),
-        state: r.state,
-        message: r.message,
-      })));
+      state.lastResults = new Map(
+        results.map((r) => [`${r.key}|${r.token}`, r]));
+      state.selected.clear();
+      try {
+        state.cards = await snapshot();
+        state.offers = buildOfferIndex(state.cards);
+      } catch { /* keep previous list; result view still shows outcomes */ }
+      state.view = 'result';
     } catch (error) {
-      prog.textContent = `Run failed: ${error.message}`;
-    } finally {
-      go.disabled = false;
+      state.errorMessage = `执行失败：${error.message}`;
+      state.view = 'error';
     }
+    render();
+  }
+
+  /** Re-runs the failed (offer, card) pairs from the last result. */
+  function retryFailed() {
+    const tasks = [...state.lastResults.values()]
+      .filter((r) => r.state === ResultState.FAILED)
+      .map((r) => ({token: r.token, offerId: r.offerId, key: r.key,
+        name: r.name}));
+    if (tasks.length) runSelected(tasks);
+  }
+
+  /** Downloads the last run's results as a CSV file. */
+  function exportCsv() {
+    const rows = [['offer', 'card', 'state', 'message']];
+    for (const r of state.lastResults.values()) {
+      rows.push([r.name, cardLabel(r.token), r.state, r.message || '']);
+    }
+    const csv = rows.map((row) => row
+      .map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','),
+    ).join('\n');
+    const url = URL.createObjectURL(
+      new Blob([csv], {type: 'text/csv;charset=utf-8'}));
+    const link = el('a', {href: url, download: 'amex-assistant-results.csv'});
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Returns from the result view to the offer list. */
+  function backToList() {
+    state.view = 'list';
+    render();
+  }
+
+  // ---- panel shell / lifecycle ---------------------------------------------
+
+  /** @return {!ShadowRoot} Creates the panel host + shadow root. */
+  function createPanel() {
+    const host = el('div', {style:
+      'position:fixed;top:16px;right:16px;z-index:2147483647'});
+    document.body.appendChild(host);
+    panelHost = host;
+    const root = host.attachShadow({mode: 'open'});
+    panelRoot = root;
+    root.append(el('style', {text: PANEL_STYLE}));
+    root.append(el('div', {class: 'p', id: 'shell'}));
+    return root;
   }
 
   /**
-   * (Re)loads the snapshot and renders the offer list. Called on first open and
-   * whenever the user clicks refresh; the result is cached so reopening is
-   * instant until the next refresh.
-   * @param {!ShadowRoot} root Panel shadow root.
+   * (Re)loads the snapshot and shows the list (or empty/error). Cached so
+   * reopening is instant until the next refresh.
    * @return {!Promise<void>} Resolves when rendered.
    */
-  async function refresh(root) {
-    const list = root.getElementById('list');
-    list.textContent = 'Loading…';
-    root.getElementById('sub').textContent = '';
+  async function refresh() {
     state.lastResults = new Map();
+    state.run = {done: 0, total: state.cards.length || 4};
+    state.view = 'loading';
+    render();
     try {
       state.cards = await snapshot();
       state.offers = buildOfferIndex(state.cards);
       loaded = true;
-      renderOfferList(root);
-      root.getElementById('sub').textContent =
-          `${state.offers.length} offers · ${state.cards.length} cards`;
+      state.view = state.offers.length ? 'list' : 'empty';
     } catch (error) {
-      list.textContent = `Failed to load: ${error.message}`;
+      state.errorMessage = `${error.message}`;
+      state.view = 'error';
     }
+    render();
   }
 
-  /** Shows the panel, creating it and loading data only on first use. */
+  /** Shows the panel, creating and loading it only on first use. */
   function showPanel() {
     if (launcherButton) launcherButton.style.display = 'none';
     if (!panelHost) createPanel();
     panelHost.style.display = '';
-    if (!loaded) refresh(panelRoot); // cached afterwards; ↻ to reload
+    if (!loaded) refresh(); else render();
   }
 
-  /** Hides the panel (keeps its cached state) and restores the launcher. */
+  /** Hides the panel (keeps cached state) and restores the launcher. */
   function hidePanel() {
     if (panelHost) panelHost.style.display = 'none';
     if (launcherButton) launcherButton.style.display = '';
   }
 
-  /**
-   * Installs a small launch button. Nothing hits the account until the user
-   * opens the panel and clicks "Add selected".
-   */
+  /** Installs the launch pill. Nothing hits the account until opened. */
   function installLauncher() {
-    const button = document.createElement('button');
-    button.textContent = 'Offers';
-    button.style.cssText =
-        'position:fixed;top:16px;right:16px;z-index:2147483647;' +
-        `padding:7px 14px;cursor:pointer;background:${AMEX_BLUE};color:#fff;` +
-        'border:none;border-radius:8px;font:600 13px system-ui';
-    button.onclick = () => showPanel();
-    document.body.appendChild(button);
-    launcherButton = button;
+    const host = el('div', {style:
+      'position:fixed;top:16px;right:16px;z-index:2147483647'});
+    const root = host.attachShadow({mode: 'open'});
+    root.append(el('style', {text: `
+      .l { display:flex; align-items:center; gap:9px; background:#fff;
+        border:1px solid #E3E5E8; border-radius:6px; padding:9px 14px 9px 10px;
+        box-shadow:0 3px 12px rgba(0,23,90,.16); cursor:pointer;
+        font:12.5px 'Helvetica Neue',Helvetica,system-ui,sans-serif }
+      .i { width:24px; height:24px; border-radius:4px; background:#006FCF;
+        color:#fff; display:flex; align-items:center; justify-content:center;
+        font-size:15px; font-weight:600 }
+      .t { font-weight:800; color:#00175A; letter-spacing:.1px }
+      .s { font-size:10px; color:#7A7D82; margin-top:1px }
+    `}));
+    const pill = el('div', {class: 'l', onclick: () => showPanel()},
+      el('div', {class: 'i', text: '＋'}),
+      el('div', {},
+        el('div', {class: 't', text: 'Amex 助手'}),
+        el('div', {class: 's', text: '一个 offer，加到多张卡'})));
+    root.append(pill);
+    document.body.appendChild(host);
+    launcherButton = host;
   }
 
   window.AmexAssistant = {...api, showPanel, openPanel: showPanel};

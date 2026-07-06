@@ -27,6 +27,7 @@ const googleStyle = {
     tabWidth: 2,
     ignoreUrls: true,
     ignoreRegExpLiterals: true,
+    ignoreTemplateLiterals: true,
     ignorePattern: '^\\s*// @',
   }],
   'camelcase': ['error', {properties: 'never'}],
@@ -52,6 +53,8 @@ export default [
         fetch: 'readonly',
         setTimeout: 'readonly',
         console: 'readonly',
+        URL: 'readonly',
+        Blob: 'readonly',
         // `module` is declared via a /* global */ comment in the source so the
         // Node export path also passes Tampermonkey's built-in linter.
       },
