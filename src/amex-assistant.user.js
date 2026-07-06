@@ -1561,16 +1561,19 @@
   /** Installs the launch pill. Nothing hits the account until opened. */
   function installLauncher() {
     const host = el('div', {style:
-      'position:fixed;top:16px;right:16px;z-index:2147483647'});
+      'position:fixed;top:96px;right:0;z-index:2147483647'});
     const root = host.attachShadow({mode: 'open'});
     root.append(el('style', {text: `
       .l { display:flex; align-items:center; gap:9px; background:#fff;
-        border:1px solid #E3E5E8; border-radius:6px; padding:9px 14px 9px 10px;
-        box-shadow:0 3px 12px rgba(0,23,90,.16); cursor:pointer;
-        font:12.5px 'Helvetica Neue',Helvetica,system-ui,sans-serif }
+        border:1px solid #E3E5E8; border-right:none;
+        border-radius:6px 0 0 6px; padding:10px 16px 10px 12px;
+        box-shadow:0 3px 12px rgba(0,23,90,.14); cursor:pointer;
+        font:12.5px 'Helvetica Neue',Helvetica,system-ui,sans-serif;
+        transition:box-shadow .15s ease }
+      .l:hover { box-shadow:0 5px 18px rgba(0,23,90,.22) }
       .i { width:24px; height:24px; border-radius:4px; background:#006FCF;
         color:#fff; display:flex; align-items:center; justify-content:center;
-        font-size:15px; font-weight:600 }
+        font-size:15px; font-weight:600; line-height:1 }
       .t { font-weight:800; color:#00175A; letter-spacing:.1px }
       .s { font-size:10px; color:#7A7D82; margin-top:1px }
     `}));
