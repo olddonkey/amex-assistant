@@ -1,0 +1,24 @@
+{
+  "name": "amex-assistant",
+  "version": "0.1.0",
+  "description": "Tampermonkey userscript to add an Amex Offer to multiple cards from one panel. Local-only, no telemetry.",
+  "type": "commonjs",
+  "private": true,
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "lint": "eslint src test"
+  },
+  "keywords": [
+    "amex",
+    "american-express",
+    "offers",
+    "userscript",
+    "tampermonkey"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@stylistic/eslint-plugin": "^2.0.0",
+    "eslint": "^9.0.0"
+  }
+}

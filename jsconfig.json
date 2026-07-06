@@ -1,0 +1,14 @@
+{
+  // This project is linted with ESLint (Google-style conventions via
+  // @stylistic), not type-checked with tsc. The JSDoc uses Closure-style
+  // annotations for documentation; `checkJs` is off so editors don't surface
+  // strict TypeScript diagnostics against them. Run `npm run lint` and
+  // `npm test` to validate.
+  "compilerOptions": {
+    "checkJs": false,
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src", "test", "eslint.config.mjs"]
+}

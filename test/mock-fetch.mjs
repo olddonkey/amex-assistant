@@ -1,0 +1,144 @@
+/**
+ * @fileoverview A scenario-driven stand-in for `fetch` used by the tests so
+ * they can exercise the userscript's network layer without a real American
+ * Express session. It mirrors the response shapes documented in
+ * docs/FINDINGS.md.
+ */
+
+/**
+ * Wraps data in a minimal `Response`-like object.
+ * @param {!Object} data Parsed JSON body to return.
+ * @param {boolean=} ok Whether the response is a success.
+ * @param {number=} status HTTP status code.
+ * @return {!Object} A `fetch`-compatible response.
+ */
+export function jsonResponse(data, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    statusText: ok ? 'OK' : 'Error',
+    json: async () => data,
+  };
+}
+
+/**
+ * Builds a raw offers-hub offer object.
+ * @param {string} offerId The `offerId` field.
+ * @param {{pzn: (string|undefined), type: (string|undefined),
+ *          title: (string|undefined)}=} opts Optional overrides.
+ * @return {!Object} A raw offer.
+ */
+export function makeOffer(offerId, opts = {}) {
+  const offer = {
+    offerId,
+    offerType: opts.type || 'MERCHANT',
+    title: opts.title || `Offer ${offerId}`,
+  };
+  if (opts.pzn) offer.pznAnalyticsId = opts.pzn;
+  return offer;
+}
+
+/**
+ * Creates a `fetch` mock driven by a scenario.
+ *
+ * Scenario fields:
+ * - `accounts`: raw account objects (each with `account_token`).
+ * - `eligiblePages`: `{[token]: Array<Array<offer>>}` — one inner array per
+ *   hub page.
+ * - `enrolledState`: `{[token]: Array<offer>}` — mutable; the current
+ *   added-to-card list per card.
+ * - `onEnroll`: `(token, offerId, scenario) => enrollResponse` — returns the
+ *   raw enroll response and may mutate `enrolledState` to model the server.
+ *
+ * @param {!Object} scenario Scenario definition.
+ * @return {function(string, !Object=): !Promise<!Object>} A `fetch` mock; its
+ *     `.calls` array records every request.
+ */
+export function createMockFetch(scenario) {
+  const calls = [];
+
+  /**
+   * @param {string} url Request URL.
+   * @param {!Object=} options `fetch` options.
+   * @return {!Promise<!Object>} Response.
+   */
+  async function mockFetch(url, options = {}) {
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({url, method: options.method || 'GET', body});
+
+    if (url.endsWith('/api/servicing/v1/member')) {
+      return jsonResponse({accounts: scenario.accounts || []});
+    }
+
+    if (url.includes('ReadOffersHubPresentation')) {
+      const token = body.accountNumberProxy;
+      if (body.requestType === 'OFFERSHUB_LANDING') {
+        const pages = (scenario.eligiblePages || {})[token] || [];
+        const index = body.offerPage ?
+          Number(body.offerPage.replace('page', '')) - 1 : 0;
+        const key = body.offerPage || 'page1';
+        return jsonResponse(
+          {recommendedOffers: {offersList: {[key]: pages[index] || []}}});
+      }
+      if (body.requestType === 'ADDEDTOCARD_LANDING') {
+        if (scenario.failVerify) throw new Error('verify read failed');
+        const items = (scenario.enrolledState || {})[token] || [];
+        return jsonResponse({addedToCardViewAll: {offersList: {page1: items}}});
+      }
+    }
+
+    if (url.includes('CreateOffersHubEnrollment')) {
+      // Optional barrier so a test can hold every enroll open at once and
+      // observe that concurrent fires all reach here before any completes.
+      if (scenario.enrollGate) await scenario.enrollGate;
+      const response =
+          scenario.onEnroll(body.accountNumberProxy, body.offerId, scenario);
+      return jsonResponse(response);
+    }
+
+    throw new Error(`mock-fetch: unhandled ${options.method || 'GET'} ${url}`);
+  }
+
+  mockFetch.calls = calls;
+  return mockFetch;
+}
+
+/**
+ * Common `onEnroll` handlers.
+ * @const
+ */
+export const enrollHandlers = {
+  /**
+   * Reports success and adds the matching eligible offer to the card's enrolled
+   * list (so a re-read verifies it). Models the server: the added offer is the
+   * same object — carrying the same `pznAnalyticsId` group key — as the
+   * eligible one for that card.
+   * @param {string} token Card token.
+   * @param {string} offerId The card's own opaque offerId.
+   * @param {!Object} scenario Scenario (mutated).
+   * @return {!Object} Enroll response.
+   */
+  succeedAndAdd(token, offerId, scenario) {
+    const pages = (scenario.eligiblePages || {})[token] || [];
+    const offer = pages.flat().find((o) => o.offerId === offerId);
+    (scenario.enrolledState[token] ||= []).push(offer || {offerId});
+    return {status: {purpose: 'SUCCESS', message: 'Offer added.'}};
+  },
+
+  /**
+   * Reports success but does NOT add the offer (models Amex's per-person
+   * de-duplication — a "ghost" success).
+   * @return {!Object} Enroll response.
+   */
+  succeedButGhost() {
+    return {status: {purpose: 'SUCCESS', message: 'Offer added.'}};
+  },
+
+  /**
+   * Reports a hard failure.
+   * @return {!Object} Enroll response.
+   */
+  fail() {
+    return {status: {purpose: 'ERROR', message: 'Not eligible.'}};
+  },
+};
