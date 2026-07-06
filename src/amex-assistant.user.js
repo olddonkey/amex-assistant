@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.7.0
+// @version      0.8.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -9,6 +9,9 @@
 // @run-at       document-idle
 // @license      MIT
 // @homepageURL  https://github.com/olddonkey/amex-assistant
+// @supportURL   https://github.com/olddonkey/amex-assistant/issues
+// @updateURL    https://raw.githubusercontent.com/olddonkey/amex-assistant/main/src/amex-assistant.user.js
+// @downloadURL  https://raw.githubusercontent.com/olddonkey/amex-assistant/main/src/amex-assistant.user.js
 // ==/UserScript==
 
 /**

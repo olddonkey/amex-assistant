@@ -1,5 +1,10 @@
 # Amex Assistant
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Install](https://img.shields.io/badge/Install-userscript-brightgreen.svg)](https://raw.githubusercontent.com/olddonkey/amex-assistant/main/src/amex-assistant.user.js)
+<!-- After publishing on Greasy Fork, add (replace SCRIPT_ID):
+[![Greasy Fork](https://img.shields.io/greasyfork/v/SCRIPT_ID.svg)](https://greasyfork.org/scripts/SCRIPT_ID) -->
+
 A **personal-use** Tampermonkey userscript for American Express. Log in, open a
 small injected panel, **pick an offer, and add it to several cards at once** —
 add it to every eligible card, or expand an offer to choose specific cards.
@@ -15,12 +20,16 @@ any third party).
 
 ## Install
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/).
-2. Create a new script and paste the contents of
-   [`src/amex-assistant.user.js`](src/amex-assistant.user.js) (or open the raw file so
-   Tampermonkey offers to install it).
+1. Install a userscript manager: [Tampermonkey](https://www.tampermonkey.net/)
+   or [Violentmonkey](https://violentmonkey.github.io/).
+2. **[► Install Amex Assistant](https://raw.githubusercontent.com/olddonkey/amex-assistant/main/src/amex-assistant.user.js)**
+   — your userscript manager detects the `.user.js` and shows an install prompt.
+   Installed copies **auto-update** from this URL.
 3. Go to `https://global.americanexpress.com/`, log in, and click the
    **Offers** button that appears at the top-right.
+
+*(A Greasy Fork listing is coming — it will give a one-click install button and
+auto-updates for users who already have a userscript manager.)*
 
 ## Use
 
