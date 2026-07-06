@@ -813,10 +813,20 @@
       padding: 8px 12px; font: inherit; color: var(--ink); outline: none;
     }
     .sr input:focus { border-color: var(--blue); }
+    .tabwrap { position: relative; }
+    /* Fade the right edge so the overflowing card tabs read as scrollable
+       without a scrollbar chrome. */
+    .tabwrap::after {
+      content: ''; position: absolute; top: 0; right: 0; bottom: 1px;
+      width: 28px; pointer-events: none;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff);
+    }
     .tabs {
       display: flex; gap: 18px; padding: 12px 18px 0; overflow-x: auto;
       border-bottom: 1px solid var(--line); font-size: 12px;
+      scrollbar-width: none; -ms-overflow-style: none;
     }
+    .tabs::-webkit-scrollbar { display: none; }
     .tab { padding-bottom: 9px; color: var(--sub); cursor: pointer;
       white-space: nowrap; border-bottom: 2px solid transparent; }
     .tab.on { font-weight: 700; color: var(--navy); border-bottom-color: var(--blue); }
@@ -1203,7 +1213,7 @@
           String(card.token).slice(-4);
       addTab(card.token, familyOf(card), `…${digits}`);
     }
-    body.append(tabs);
+    body.append(el('div', {class: 'tabwrap'}, tabs));
 
     const tb = el('div', {class: 'tb'});
     const multi = el('input', {type: 'checkbox'});
