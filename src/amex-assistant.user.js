@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.10.1
+// @version      0.10.2
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -1621,13 +1621,11 @@
         color:#fff; display:flex; align-items:center; justify-content:center;
         font-size:15px; font-weight:600; line-height:1 }
       .t { font-weight:800; color:#00175A; letter-spacing:.1px }
-      .s { font-size:10px; color:#7A7D82; margin-top:1px }
     `}));
     const pill = el('div', {class: 'l', onclick: () => showPanel()},
       el('div', {class: 'i', text: '＋'}),
       el('div', {},
-        el('div', {class: 't', text: 'Amex 助手'}),
-        el('div', {class: 's', text: '一个 offer，加到多张卡'})));
+        el('div', {class: 't', text: 'Amex 助手'})));
     root.append(pill);
     document.body.appendChild(host);
     launcherButton = host;
