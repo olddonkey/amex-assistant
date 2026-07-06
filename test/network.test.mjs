@@ -89,3 +89,21 @@ test('snapshot builds per-card eligible + enrolled keys', async () => {
   assert.equal(group.cards.find((c) => c.token === 'TOKENA').enrolled, true);
   assert.equal(group.cards.find((c) => c.token === 'TOKENB').enrolled, false);
 });
+
+test('snapshot reports progress with the real card count', async () => {
+  useScenario({
+    accounts: [
+      {account_token: 'A'}, {account_token: 'B'}, {account_token: 'C'},
+    ],
+    eligiblePages: {A: [[makeOffer('OA')]], B: [], C: []},
+    enrolledState: {A: [], B: [], C: []},
+  });
+
+  const progress = [];
+  await snapshot((done, total) => progress.push(`${done}/${total}`));
+
+  // The total is the real account count from the first fetch (not hardcoded),
+  // and progress steps once per card from 0 to N — never jumping straight to
+  // the end.
+  assert.deepEqual(progress, ['0/3', '1/3', '2/3', '3/3']);
+});

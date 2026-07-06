@@ -479,13 +479,23 @@
 
   /**
    * Reads all cards and their eligible offers plus already-added group keys.
+   *
+   * The account list is fetched first so the real card count is known before
+   * any card is read; `onProgress` then fires once per card (starting at 0)
+   * with the running total, letting the loading UI show honest progress.
+   *
+   * @param {function(number, number)=} onProgress Called `(done, total)` as
+   *     each card finishes reading. Defaults to a no-op.
    * @return {!Promise<!Array<!CardSnapshot>>} Per-card snapshot.
    */
-  async function snapshot() {
+  async function snapshot(onProgress = () => {}) {
+    const accounts = flattenAccounts(await fetchAccounts())
+      .filter((account) => account.account_token);
+    const total = accounts.length;
+    onProgress(0, total);
     const cards = [];
-    for (const account of flattenAccounts(await fetchAccounts())) {
+    for (const account of accounts) {
       const token = account.account_token;
-      if (!token) continue;
       const eligible = await fetchEligibleOffers(token);
       const enrolled = await fetchEnrolledOffers(token);
       const enrolledKeys =
@@ -500,6 +510,7 @@
         enrolled,
         enrolledKeys,
       });
+      onProgress(cards.length, total);
     }
     return cards;
   }
@@ -1105,6 +1116,18 @@
   }
 
   /**
+   * The header refresh control's glyph: a clean stroked "reload" icon that
+   * inherits the button's text color via `currentColor`.
+   * @const {string}
+   */
+  const REFRESH_SVG =
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" ' +
+      'stroke-linejoin="round" style="display:block">' +
+      '<path d="M21 12a9 9 0 1 1-2.64-6.36"></path>' +
+      '<polyline points="21 3 21 9 15 9"></polyline></svg>';
+
+  /**
    * Builds the header row.
    * @param {{glyph: (string|Node), title: string, subtitle: string,
    *          refresh: (boolean|undefined), close: (boolean|undefined),
@@ -1120,8 +1143,11 @@
       opts.subtitle ? el('div', {class: 't2', text: opts.subtitle}) : null));
     if (opts.right) hd.append(opts.right);
     if (opts.refresh) {
-      hd.append(el('button', {class: 'rf', title: 'Refresh', text: '↻',
-        onclick: () => refresh()}));
+      const rf = el('button', {class: 'rf', title: '刷新',
+        onclick: () => refresh()});
+      // Static author-controlled markup (no interpolation): safe to inline.
+      rf.innerHTML = REFRESH_SVG;
+      hd.append(rf);
     }
     if (opts.close) {
       hd.append(el('button', {class: 'cl', title: 'Close', text: '×',
@@ -1144,10 +1170,9 @@
 
   /** @param {!Element} shell Panel content root. */
   function renderListView(shell) {
-    const count = `${state.offers.length} offers · ${state.cards.length} cards`;
     shell.append(renderHeader({
       glyph: '＋', title: 'Amex 助手',
-      subtitle: `一个 offer，加到多张卡 · ${count}`,
+      subtitle: `${state.offers.length} 个 offer · ${state.cards.length} 张卡`,
       refresh: true, close: true,
     }));
 
@@ -1245,15 +1270,19 @@
   function renderLoadingView(shell) {
     shell.append(renderHeader({glyph: '＋', title: 'Amex 助手',
       subtitle: '一个 offer，加到多张卡', close: true}));
-    const pr = state.run || {done: 0, total: state.cards.length || 1};
-    const pct = pr.total ? Math.round(pr.done / pr.total * 100) : 0;
+    const pr = state.run || {done: 0, total: 0};
+    const known = pr.total > 0;
+    // Before the account list returns the total is unknown; show a small sliver
+    // so the bar reads as "working" rather than empty.
+    const pct = known ? Math.round(pr.done / pr.total * 100) : 8;
     const body = el('div', {class: 'body', style: 'padding:20px 18px'});
     const rowStyle = 'display:flex;justify-content:space-between;' +
         'align-items:baseline;margin-bottom:8px';
     body.append(el('div', {style: rowStyle},
       el('div', {style: 'font-size:13px;font-weight:700',
         text: '正在读取每张卡的 offers…'}),
-      el('div', {class: 'note', text: `第 ${pr.done} / ${pr.total} 张卡`})));
+      el('div', {class: 'note',
+        text: known ? `第 ${pr.done} / ${pr.total} 张卡` : '读取卡片列表…'})));
     body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
       el('div', {style: `width:${pct}%`})));
     body.append(el('div', {class: 'note', text: '只读快照，不会改动你的账户'}));
@@ -1529,11 +1558,14 @@
    */
   async function refresh() {
     state.lastResults = new Map();
-    state.run = {done: 0, total: state.cards.length || 4};
+    state.run = {done: 0, total: state.cards.length};
     state.view = 'loading';
     render();
     try {
-      state.cards = await snapshot();
+      state.cards = await snapshot((done, total) => {
+        state.run = {done, total};
+        if (state.view === 'loading') render();
+      });
       state.offers = buildOfferIndex(state.cards);
       loaded = true;
       state.view = state.offers.length ? 'list' : 'empty';
