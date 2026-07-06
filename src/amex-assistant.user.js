@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.9.1
+// @version      0.10.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -109,8 +109,6 @@
    * @enum {string}
    */
   const ResultState = {
-    /** Dry run: nothing was sent. */
-    DRY_RUN: 'dry-run',
     /** The enroll request errored or did not report success. */
     FAILED: 'failed',
     /** Enroll reported success and the offer was found on re-read. */
@@ -560,8 +558,7 @@
    * recorded and does not abort the run.
    *
    * @param {!Array<!Task>} tasks Flattened (offer, card) work items.
-   * @param {{dryRun: (boolean|undefined),
-   *          onProgress: (function(number, number)|undefined),
+   * @param {{onProgress: (function(number, number)|undefined),
    *          onSettle: (function(!Object)|undefined),
    *          delay: (function(): !Promise<void>|undefined)}=} options Behavior
    *     overrides. `onSettle` fires with each attempt as its enroll settles
@@ -571,23 +568,10 @@
    */
   async function executeSelected(tasks, options = {}) {
     const {
-      dryRun = false,
       onProgress = () => {},
       onSettle = () => {},
       delay = randomDelay,
     } = options;
-
-    if (dryRun) {
-      tasks.forEach((task, index) => onProgress(index + 1, tasks.length));
-      return tasks.map((task) => ({
-        key: task.key,
-        name: task.name,
-        token: task.token,
-        offerId: task.offerId,
-        state: ResultState.DRY_RUN,
-        message: '',
-      }));
-    }
 
     const offerGroups = groupTasksByOffer(tasks);
     const attempts = [];
@@ -884,8 +868,6 @@
       align-items: center; gap: 12px; background: #fff; flex: none; }
     .ft .sm { flex: 1; font-size: 12px; color: var(--sub); }
     .ft .sm b { color: var(--ink); }
-    .dry { display: flex; align-items: center; gap: 5px; font-size: 12px;
-      color: var(--sub); cursor: pointer; }
     .go { background: var(--blue); color: #fff; font-size: 13px; font-weight: 700;
       border: none; border-radius: 4px; padding: 10px 22px; cursor: pointer;
       white-space: nowrap; }
@@ -1236,13 +1218,10 @@
 
   /** @return {!Element} The list-view footer. */
   function renderFooter() {
-    const dry = el('input', {type: 'checkbox', id: 'dry'});
-    dry.checked = true;
     const sm = el('div', {class: 'sm', id: 'sm'});
     const go = el('button', {class: 'go', id: 'go', text: '加入所选',
       onclick: () => runSelected()});
-    return el('div', {class: 'ft'},
-      el('label', {class: 'dry'}, dry, 'Dry-run'), sm, go);
+    return el('div', {class: 'ft'}, sm, go);
   }
 
   /** Updates the footer summary + button enabled state. */
@@ -1469,15 +1448,8 @@
    * @return {!Promise<void>} Resolves when the run finishes.
    */
   async function runSelected(presetTasks) {
-    const dry = panelRoot.getElementById('dry')?.checked ?? true;
     const tasks = presetTasks || buildTasks();
     if (tasks.length === 0) return;
-
-    if (dry) {
-      window.alert(`Dry-run：将并行发出 ${tasks.length} 个 (offer × 卡) 请求。` +
-          '\n取消勾选 Dry-run 后再点「加入所选」才会真正添加。');
-      return;
-    }
 
     state.view = 'running';
     state.run = {tasks, total: tasks.length, results: []};

@@ -13,7 +13,6 @@
 - **不自动改账户**：脚本加载时只放一个启动按钮；拉快照要用户点开面板；enroll 只在用户点「加入所选」时发生。
 - **单文件** `src/amex-assistant.user.js`，原生 DOM + Shadow DOM，不引框架、无打包步骤。
 - **同一 offer 的多卡必须并发**（`Promise.all`）——串行只会让第一张成功；**不同 offer 之间**用随机延迟 1.5–4s 隔开。
-- **面板 Dry-run 默认勾选**。
 - 按 FINDINGS 的规格**从零实现**（不引入任何第三方代码）。
 - 许可 MIT。
 
@@ -26,8 +25,8 @@
 | 能离线做 + 能自测（Codex 负责） | 必须用户的登录态（USER GATE，Codex 停在此） |
 |---|---|
 | 全部代码结构、常量集中 | **M0**：DevTools 确认端点/body/字段未变、cookie 即足够 |
-| 纯函数：`offerGroupKey` / `getPath` / `buildOfferIndex` / `flattenAccounts` | 首次真实 enroll 冒烟（dry-run 关掉，加 1 个 offer 到 1 张卡并校验出现） |
-| `executeSelected` 的 dry-run、并发与四态分类逻辑（用 mock fetch） | `snapshot()` 对真实账户跑通、聚合数量核对 |
+| 纯函数：`offerGroupKey` / `getPath` / `buildOfferIndex` / `flattenAccounts` | 首次真实 enroll 冒烟（选 1 个 offer 加到 1 张卡并校验出现） |
+| `executeSelected` 的并发与四态分类逻辑（用 mock fetch） | `snapshot()` 对真实账户跑通、聚合数量核对 |
 | Shadow DOM 面板渲染、勾选/展开/搜索交互 | 真实分页边界、真实「假成功」返回形态 |
 | `node --check`、fixture 单测、`git diff --check` | |
 
@@ -57,7 +56,7 @@
 ## 3. 任务分解（里程碑 → PR）
 
 ### M0（USER GATE，非 Codex 任务）
-用户按 FINDINGS §4「2 分钟自证步骤」在 DevTools 确认端点/body/字段未变、cookie 即足够。**未过 M0 之前，M3 的真实 enroll 不允许启用**（M1/M2 及 M3 的 dry-run 逻辑可先离线开发）。
+用户按 FINDINGS §4「2 分钟自证步骤」在 DevTools 确认端点/body/字段未变、cookie 即足够。**未过 M0 之前，M3 的真实 enroll 不允许启用**（M1/M2 及 M3 的分类逻辑可先用 mock fetch 离线开发）。
 
 ### PR-M1 — 网络层 + 快照 + 聚合（纯逻辑，不含 UI，不真改账户）
 - 文件：`src/amex-assistant.user.js`（header + 常量 + 网络层 + `snapshot` + `buildOfferIndex`）、`test/fixtures/*`、`test/mock-fetch.js`、`test/offer-index.test.mjs`、`LICENSE`、`DISCLAIMER.md`。
@@ -70,7 +69,7 @@
 
 ### PR-M2 — Shadow DOM 面板渲染（只读）
 - 文件：`src/amex-assistant.user.js`（面板 + 启动按钮 + `renderList`）、`test/panel.test.mjs`（可选，用最小 DOM 或 jsdom）。
-- 实现：启动按钮 → `openPanel` → 用 M1 聚合结果渲染 offer 列表（名称、可加X/已加Y 徽标、勾选框、展开逐卡）、卡范围过滤、搜索、Dry-run 勾选。「加入所选」此阶段只**打印**选中的 offer×卡对（等价 dry-run）。
+- 实现：启动按钮 → `openPanel` → 用 M1 聚合结果渲染 offer 列表（名称、可加X/已加Y 徽标、勾选框、展开逐卡）、卡范围过滤、搜索。「加入所选」此阶段只**打印**选中的 offer×卡对，不真正 enroll。
 - **DoD**：
   - 给定注入的 `STATE`（来自 fixture），面板正确渲染去重 offer 与逐卡分布；勾选/展开/搜索/过滤交互正常（离线可测或截图说明）。
   - 已加卡的复选框禁用；勾 offer 默认选中其所有「可加且未加」的卡。
@@ -78,12 +77,12 @@
 
 ### PR-M3 — 执行选中 + 校验 + 三态
 - 文件：`src/amex-assistant.user.js`（`executeSelected` + `onGo` 接线 + 进度/结果）、`test/execute.test.mjs`。
-- 实现：把选中 offer×卡展开成任务；**同一 offer 的卡并发**、offer 间随机延迟 enroll（跳过已加）；结束后对涉及卡重拉已加列表，用**分组 key** 分类 `verified / failed / ghost / unverified`；面板进度与四态计数；Dry-run 勾选时只打印。
+- 实现：把选中 offer×卡展开成任务；**同一 offer 的卡并发**、offer 间随机延迟 enroll（跳过已加）；结束后对涉及卡重拉已加列表，用**分组 key** 分类 `verified / failed / ghost / unverified`；面板进度与四态计数。
 - **DoD**：
-  - 用 mock fetch：`executeSelected(sel,{dryRun:true})` 正确展开任务、不发 enroll；`{dryRun:false}` 下四态分类正确（命中→verified；enroll 非 SUCCESS→failed；SUCCESS 但列表无→ghost；校验读取失败→unverified）——单测通过。
+  - 用 mock fetch：`executeSelected(sel)` 四态分类正确（命中→verified；enroll 非 SUCCESS→failed；SUCCESS 但列表无→ghost；校验读取失败→unverified）——单测通过。
   - 同一 offer 并发、offer 间延迟；单个失败不中断。
   - `node --check` 通过。
-  - `USER GATE`：**用户过 M0 后**，关掉 dry-run，对 1 张卡加 1 个 offer 冒烟，确认校验为 verified（PR 里标注为发布前必做）。
+  - `USER GATE`：**用户过 M0 后**，选 1 个 offer 加到 1 张卡冒烟，确认校验为 verified（PR 里标注为发布前必做）。
 
 ### PR-M4（可选）— 打磨
 - CSV 导出、失败项一键重试、「只看多卡可加」过滤、延迟可调、样式细化。按需取舍。
@@ -94,7 +93,7 @@
 
 - `test/fixtures/`：`member.json`（多卡，含 supplementary）、`eligible-page1.json`/`eligible-page2.json`/`eligible-empty.json`、`enrolled.json`、`enroll-success.json`、`enroll-fail.json`。
 - `test/mock-fetch.js`：按 `url` + body 里的 `requestType`/`offerPage` 分发返回对应 fixture；`enroll` 端点按传入 identifier 返回 success/fail。
-- 覆盖：`buildOfferIndex` 聚合、`fetchEligibleOffers` 分页、`executeSelected` 的 dry-run 展开/并发/四态分类、`flattenAccounts` 供应卡展平。
+- 覆盖：`buildOfferIndex` 聚合、`fetchEligibleOffers` 分页、`executeSelected` 的并发/四态分类、`flattenAccounts` 供应卡展平。
 - 每个 PR 附 `node --check` 与测试运行结果。
 
 ---
@@ -103,7 +102,7 @@
 
 1. **M0**（M3 真实启用前必过）：DevTools 确认端点/body/字段、Copy-as-fetch 复现一次成功 enroll。
 2. **PR-M1 合并后**：登录跑 `AmexAssistant.snapshot()`，核对卡数与聚合 offer 数合理。
-3. **PR-M3 发布前**：dry-run 关掉，加 1 offer 到 1 卡冒烟，确认 3 步后校验为 verified。
+3. **PR-M3 发布前**：选 1 offer 加到 1 卡冒烟，确认 3 步后校验为 verified。
 
 ---
 
