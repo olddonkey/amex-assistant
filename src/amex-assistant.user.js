@@ -1131,6 +1131,18 @@
     view: 'list',
     run: null,
     errorMessage: '',
+    // Which top-level tab is showing: 'offers' or 'benefits'.
+    tab: 'offers',
+    // Benefits tab state (loaded lazily on first switch).
+    benefits: [],
+    benefitStats: null,
+    benefitsLoaded: false,
+    benefitsError: '',
+    benefitsRun: null,
+    benefitsReadAt: 0,
+    benefitsExpanded: new Set(),
+    benefitUnusedOnly: true,
+    benefitDoneOpen: false,
   };
 
   /** Panel host + shadow root, created lazily and reused across opens. */
@@ -1246,10 +1258,18 @@
       box-shadow: 0 8px 30px rgba(0,23,90,.18);
     }
     .hd {
-      display: flex; align-items: center; gap: 11px; padding: 14px 18px;
-      background: #fff; border-bottom: 2px solid var(--blue); flex: none;
+      display: flex; flex-direction: column; background: #fff;
+      border-bottom: 2px solid var(--blue); flex: none;
     }
     .hd.err { border-bottom-color: var(--red); }
+    .hd.tabbed { border-bottom: 1px solid var(--line); }
+    .hrow { display: flex; align-items: center; gap: 11px; padding: 14px 18px; }
+    .hd.tabbed .hrow { padding: 14px 18px 12px; }
+    .mtabs { display: flex; gap: 22px; padding: 0 18px; font-size: 12.5px; }
+    .mtab { color: var(--sub); padding-bottom: 10px; cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .mtab.on { font-weight: 700; color: var(--navy);
+      border-bottom-color: var(--blue); }
     .ic {
       width: 30px; height: 30px; border-radius: 5px; background: var(--blue);
       color: #fff; display: flex; align-items: center; justify-content: center;
@@ -1399,6 +1419,74 @@
     .lnk { font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; }
     .lnk.rerun { border: 1px solid var(--red); color: var(--red); border-radius: 4px;
       padding: 8px 16px; font-weight: 700; }
+    /* Benefits tab */
+    .bstats { display: flex; background: #fff;
+      border-bottom: 1px solid var(--line); }
+    .bcol { padding: 13px 0; }
+    .bcol.l { flex: 1.2; padding-left: 18px; }
+    .bcol.m { flex: 1; text-align: center; }
+    .bcol.r { flex: 1.2; padding-right: 18px; text-align: right; }
+    .bval { font-size: 19px; font-weight: 800;
+      font-variant-numeric: tabular-nums; }
+    .bval.navy { color: var(--navy); }
+    .bval.green { color: var(--green); }
+    .bval.ink { color: var(--ink); }
+    .blbl { font-size: 10.5px; color: var(--sub); margin-top: 2px; }
+    .bsub2 { font-size: 9.5px; color: var(--fog); margin-top: 1px; }
+    .vsep { width: 1px; background: var(--line); margin: 12px 0; }
+    .btb { display: flex; align-items: center; padding: 9px 18px; background: #fff;
+      border-bottom: 1px solid var(--line2); font-size: 11.5px; }
+    .btb .sp { flex: 1; }
+    .sortlbl { font-weight: 600; color: var(--ink); cursor: pointer; }
+    .caret { font-size: 10px; color: var(--fog); }
+    .unused { display: flex; align-items: center; gap: 6px; color: var(--sub);
+      cursor: pointer; }
+    .unused input[type=checkbox] { width: 13px; height: 13px; }
+    .blist { display: flex; flex-direction: column; background: #fff; }
+    .brow { display: flex; gap: 11px; padding: 12px 18px; align-items: center;
+      border-bottom: 1px solid var(--line2); }
+    .blogo { width: 40px; height: 40px; border-radius: 4px; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; }
+    .bmn { flex: 1; min-width: 0; }
+    .btitle { display: flex; align-items: baseline; gap: 6px; }
+    .bname { font-size: 13px; font-weight: 700; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bp { font-size: 10px; color: var(--fog); border: 1px solid var(--line);
+      border-radius: 2px; padding: 0 4px; flex: none; }
+    .bx { font-size: 10px; font-weight: 700; color: #005EB0; background: #EAF4FC;
+      border-radius: 2px; padding: 0 5px; flex: none; }
+    .bcard { font-size: 11px; color: var(--mut); margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bbar { height: 3px; border-radius: 1.5px; background: #EDEEF0;
+      margin-top: 6px; overflow: hidden; }
+    .bbar > div { height: 100%; background: var(--green); }
+    .brt { text-align: right; flex: none; }
+    .bamt { font-size: 12.5px; font-weight: 700; color: var(--ink);
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bamt .of { font-size: 10.5px; font-weight: 400; color: var(--fog); }
+    .bdays { font-size: 10.5px; color: var(--fog); margin-top: 2px; }
+    .bdays.urgent { font-weight: 700; color: var(--red); }
+    .bcaret { font-size: 10px; color: var(--blue); flex: none; }
+    .bgrp { border-bottom: 1px solid var(--line2); }
+    .bgrp.exp { box-shadow: inset 2px 0 0 var(--blue); background: #FBFDFF; }
+    .bgrp > .brow { border-bottom: none; }
+    .bgrp.exp > .brow { padding: 12px 18px 8px 16px; }
+    .bsub { margin: 0 18px 12px 69px; display: flex; flex-direction: column;
+      gap: 8px; }
+    .bsubrow { display: flex; align-items: center; gap: 9px; }
+    .bsubcard { font-size: 11.5px; color: var(--ink); width: 56px; flex: none; }
+    .bbar.grow { flex: 1; margin-top: 0; background: #E4E6E9; }
+    .bsubamt { font-size: 11px; color: var(--sub); width: 74px;
+      text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+    .bsec { display: flex; align-items: center; gap: 8px; padding: 11px 18px;
+      background: #FAFBFC; border-bottom: 1px solid var(--line2); cursor: pointer; }
+    .bsec .sp { flex: 1; }
+    .bsec-t { font-size: 12px; font-weight: 600; color: var(--sub); }
+    .bsec-n { font-size: 11px; color: var(--fog); background: #EDEEF0;
+      border-radius: 9px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
+    .bfoot { border-top: 1px solid var(--line); padding: 10px 18px;
+      background: #fff; flex: none; }
   `;
 
   /**
@@ -1609,24 +1697,56 @@
    * @return {!Element} The header element.
    */
   function renderHeader(opts) {
-    const hd = el('div', {class: opts.err ? 'hd err' : 'hd'});
-    hd.append(el('div', {class: 'ic'}, opts.glyph));
-    hd.append(el('div', {class: 'tt'},
+    let cls = 'hd';
+    if (opts.err) cls += ' err';
+    if (opts.tabs) cls += ' tabbed';
+    const hd = el('div', {class: cls});
+    const row = el('div', {class: 'hrow'});
+    row.append(el('div', {class: 'ic'}, opts.glyph));
+    row.append(el('div', {class: 'tt'},
       el('div', {class: 't1', text: opts.title}),
       opts.subtitle ? el('div', {class: 't2', text: opts.subtitle}) : null));
-    if (opts.right) hd.append(opts.right);
+    if (opts.right) row.append(opts.right);
     if (opts.refresh) {
       const rf = el('button', {class: 'rf', title: '刷新',
-        onclick: () => refresh()});
+        onclick: opts.onRefresh || (() => refresh())});
       // Static author-controlled markup (no interpolation): safe to inline.
       rf.innerHTML = REFRESH_SVG;
-      hd.append(rf);
+      row.append(rf);
     }
     if (opts.close) {
-      hd.append(el('button', {class: 'cl', title: '关闭', text: '×',
+      row.append(el('button', {class: 'cl', title: '关闭', text: '×',
         onclick: () => hidePanel()}));
     }
+    hd.append(row);
+    if (opts.tabs) hd.append(renderMainTabs());
     return hd;
+  }
+
+  /** @return {!Element} The Offers | Benefits tab row. */
+  function renderMainTabs() {
+    const mk = (key, label) => {
+      const tab = el('div',
+        {class: state.tab === key ? 'mtab on' : 'mtab', text: label});
+      tab.onclick = () => switchTab(key);
+      return tab;
+    };
+    return el('div', {class: 'mtabs'},
+      mk('offers', 'Offers'), mk('benefits', 'Benefits'));
+  }
+
+  /**
+   * Switches the top-level tab, lazily loading benefits the first time.
+   * @param {string} tab `'offers'` or `'benefits'`.
+   */
+  function switchTab(tab) {
+    if (state.tab === tab) return;
+    state.tab = tab;
+    if (tab === 'benefits' && !state.benefitsLoaded && !state.benefitsError) {
+      loadBenefits();
+      return;
+    }
+    render();
   }
 
   /** Rebuilds the whole panel for the current `state.view`. */
@@ -1635,10 +1755,59 @@
     const root = panelRoot;
     root.getElementById('shell').textContent = '';
     const shell = root.getElementById('shell');
+    if (state.tab === 'benefits') {
+      renderBenefitsTab(shell);
+      return;
+    }
     const views = {list: renderListView, loading: renderLoadingView,
       running: renderRunningView, result: renderResultView,
       empty: renderEmptyView, error: renderErrorView};
     (views[state.view] || renderListView)(shell);
+  }
+
+  /**
+   * Reads benefits for every card and builds the aggregated view. Cached so
+   * re-opening the tab is instant; `force` re-reads from Amex.
+   * @param {boolean=} force Re-read even if already loaded.
+   * @return {!Promise<void>} Resolves when rendered.
+   */
+  async function loadBenefits(force = false) {
+    if (state.benefitsLoaded && !force) {
+      render();
+      return;
+    }
+    state.benefitsError = '';
+    state.benefitsLoaded = false;
+    const owned = state.cards.filter(
+      (c) => (c.relationship || 'BASIC') === 'BASIC');
+    state.benefitsRun = {done: 0, total: owned.length};
+    render();
+    try {
+      const benefits = await fetchAllBenefits(state.cards, (done, total) => {
+        state.benefitsRun = {done, total};
+        if (state.tab === 'benefits' && !state.benefitsLoaded) render();
+      });
+      state.benefits = buildBenefitIndex(benefits);
+      state.benefitStats = benefitStats(state.benefits, state.cards);
+      state.benefitsReadAt = Date.now();
+      state.benefitsLoaded = true;
+    } catch (error) {
+      state.benefitsError = error.message || '读取失败';
+    }
+    render();
+  }
+
+  /**
+   * A short relative-time label, e.g. `刚刚` / `3 分钟前`.
+   * @param {number} ts Epoch ms.
+   * @return {string} Relative label.
+   */
+  function agoLabel(ts) {
+    if (!ts) return '';
+    const mins = Math.floor((Date.now() - ts) / 60000);
+    if (mins < 1) return '刚刚读取';
+    if (mins < 60) return `${mins} 分钟前读取`;
+    return `${Math.floor(mins / 60)} 小时前读取`;
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -1646,7 +1815,7 @@
     shell.append(renderHeader({
       glyph: '＋', title: 'Amex 助手',
       subtitle: `${state.offers.length} 个 offer · ${state.cards.length} 张卡`,
-      refresh: true, close: true,
+      refresh: true, close: true, tabs: true,
     }));
 
     const body = el('div', {class: 'body'});
@@ -1738,6 +1907,246 @@
       el('b', {text: String(pairs)}),
       document.createTextNode(' 次 Add to Card'));
     go.disabled = pairs === 0;
+  }
+
+  // ---- Benefits tab (3a) ---------------------------------------------------
+
+  /**
+   * Formats a currency amount, dropping `.00` on whole dollars.
+   * @param {number} n Amount.
+   * @param {string=} symbol Currency symbol.
+   * @return {string} e.g. `$412` or `$28.56`.
+   */
+  function fmtMoney(n, symbol = '$') {
+    const v = Number(n) || 0;
+    return v % 1 === 0 ? `${symbol}${v}` : `${symbol}${v.toFixed(2)}`;
+  }
+
+  /** @param {number} d Days left. @return {string} e.g. `还剩 5 天`. */
+  function daysLabel(d) {
+    if (!Number.isFinite(d)) return '';
+    if (d < 0) return '已过期';
+    return `还剩 ${d} 天`;
+  }
+
+  /** @param {!Object} extra Header overrides. @return {!Object} Header opts. */
+  function benefitsHeaderOpts(extra) {
+    const owned = state.cards.filter(
+      (c) => (c.relationship || 'BASIC') === 'BASIC').length;
+    const parts = [`${owned} Cards`];
+    const ago = agoLabel(state.benefitsReadAt);
+    if (ago) parts.push(ago);
+    return {glyph: '＋', title: 'Amex 助手', subtitle: parts.join(' · '),
+      close: true, tabs: true, ...extra};
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsTab(shell) {
+    if (state.benefitsError) return renderBenefitsError(shell);
+    if (!state.benefitsLoaded) return renderBenefitsLoading(shell);
+    renderBenefitsList(shell);
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsLoading(shell) {
+    shell.append(renderHeader(benefitsHeaderOpts({})));
+    const pr = state.benefitsRun || {done: 0, total: 0};
+    const known = pr.total > 0;
+    const pct = known ? Math.round(pr.done / pr.total * 100) : 8;
+    const body = el('div', {class: 'body', style: 'padding:20px 18px'});
+    const rowStyle = 'display:flex;justify-content:space-between;' +
+        'align-items:baseline;margin-bottom:8px';
+    body.append(el('div', {style: rowStyle},
+      el('div', {style: 'font-size:13px;font-weight:700',
+        text: '正在读取每张卡的 benefits…'}),
+      el('div', {class: 'note',
+        text: known ? `第 ${pr.done} / ${pr.total} 张卡` :
+          '正在读取卡列表…'})));
+    body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
+      el('div', {style: `width:${pct}%`})));
+    body.append(el('div', {class: 'note', text: '纯只读，不会改动账户'}));
+    shell.append(body);
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsError(shell) {
+    shell.append(renderHeader(benefitsHeaderOpts({})));
+    const body = el('div', {class: 'body'});
+    const msg = el('div', {class: 'msg'});
+    msg.append(el('div', {class: 'cir bad', text: '!'}));
+    msg.append(el('div', {class: 'h', text: '读取失败'}));
+    msg.append(el('div', {class: 'txt',
+      text: '登录态可能已过期。请先在本页登录 Amex，再重试。'}));
+    msg.append(el('div', {class: 'btn pri', text: '重试',
+      onclick: () => loadBenefits(true)}));
+    body.append(msg);
+    shell.append(body);
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsList(shell) {
+    shell.append(renderHeader(benefitsHeaderOpts({
+      refresh: true, onRefresh: () => loadBenefits(true)})));
+    const body = el('div', {class: 'body'});
+    body.append(renderBenefitStats());
+
+    const tb = el('div', {class: 'btb'});
+    tb.append(el('div', {class: 'sortlbl'}, '按到期排序 ',
+      el('span', {class: 'caret', text: '▾'})));
+    tb.append(el('div', {class: 'sp'}));
+    const un = el('input', {type: 'checkbox'});
+    un.checked = state.benefitUnusedOnly;
+    un.onchange = () => {
+      state.benefitUnusedOnly = un.checked;
+      render();
+    };
+    tb.append(el('label', {class: 'unused'}, un, '只看未用完'));
+    body.append(tb);
+
+    const active = state.benefits.filter((g) => !g.fullyUsed);
+    const used = state.benefits.filter((g) => g.fullyUsed);
+    const shown = state.benefitUnusedOnly ? active : state.benefits;
+    const list = el('div', {class: 'blist'});
+    for (const g of shown) list.append(renderBenefitRow(g));
+    if (shown.length === 0) {
+      list.append(el('div', {class: 'msg', style: 'padding:24px'},
+        el('div', {class: 'note', text: '这些卡上没有可追踪的 benefit'})));
+    }
+    body.append(list);
+
+    if (state.benefitUnusedOnly && used.length) {
+      body.append(renderBenefitDoneSection(used));
+    }
+
+    shell.append(body);
+    shell.append(el('div', {class: 'bfoot'},
+      el('div', {class: 'note',
+        text: '进度来自 Amex 的额度追踪 · 纯只读，不在本地存任何数据'})));
+  }
+
+  /** @return {!Element} The three-stat header bar. */
+  function renderBenefitStats() {
+    const s = state.benefitStats ||
+        {thisMonthUnused: 0, redeemedYtd: 0, annualFee: 0, paybackPct: 0};
+    const col = (cls, value, valCls, label, sub) => {
+      const c = el('div', {class: `bcol ${cls}`});
+      c.append(el('div', {class: `bval ${valCls}`, text: value}));
+      c.append(el('div', {class: 'blbl', text: label}));
+      if (sub) c.append(el('div', {class: 'bsub2', text: sub}));
+      return c;
+    };
+    const feeCol = s.annualFee > 0 ?
+      col('r', `${s.paybackPct}%`, 'ink',
+        `年费回本 ${fmtMoney(s.redeemedYtd)}/${fmtMoney(s.annualFee)}`,
+        '仅含可自动追踪的项目') :
+      col('r', fmtMoney(s.redeemedYtd), 'ink', '今年已用回', '按可追踪项目');
+    return el('div', {class: 'bstats'},
+      col('l', fmtMoney(s.thisMonthUnused), 'navy', '本月还没用的'),
+      el('div', {class: 'vsep'}),
+      col('m', fmtMoney(s.redeemedYtd), 'green', '今年已用回'),
+      el('div', {class: 'vsep'}),
+      feeCol);
+  }
+
+  /**
+   * @param {!Array<!Object>} used Fully-used benefit groups.
+   * @return {!Element} The collapsible "已用完" section.
+   */
+  function renderBenefitDoneSection(used) {
+    const wrap = el('div', {class: 'bdone'});
+    const head = el('div', {class: 'bsec'});
+    head.append(el('span', {class: 'bsec-t', text: '已用完 · 本周期'}));
+    head.append(el('span', {class: 'bsec-n', text: String(used.length)}));
+    head.append(el('div', {class: 'sp'}));
+    head.append(el('span', {class: 'caret',
+      text: state.benefitDoneOpen ? '▴' : '▾'}));
+    head.onclick = () => {
+      state.benefitDoneOpen = !state.benefitDoneOpen;
+      render();
+    };
+    wrap.append(head);
+    if (state.benefitDoneOpen) {
+      for (const g of used) wrap.append(renderBenefitRow(g));
+    }
+    return wrap;
+  }
+
+  /**
+   * @param {!Object} group A benefit group.
+   * @return {!Element} One benefit row (expandable when multi-card).
+   */
+  function renderBenefitRow(group) {
+    const [bg, fg] = logoColors(group.name);
+    const logo = el('div', {class: 'blogo',
+      style: `background:${bg};color:${fg}`,
+      text: merchantInitials(group.name)});
+    const title = el('div', {class: 'btitle'},
+      el('span', {class: 'bname', text: group.name}));
+    if (group.period) {
+      title.append(el('span', {class: 'bp', text: group.period}));
+    }
+    if (group.multiCard) {
+      title.append(el('span', {class: 'bx',
+        text: `×${group.entries.length} 张卡`}));
+    }
+    const cardText = group.entries
+      .map((e) => `${e.family} …${e.digits}`).join(' · ');
+    const mn = el('div', {class: 'bmn'}, title,
+      el('div', {class: 'bcard', text: cardText}));
+
+    const pct = group.target > 0 ?
+      Math.min(100, Math.round(group.spent / group.target * 100)) : 0;
+    if (!group.multiCard) {
+      mn.append(el('div', {class: 'bbar'}, el('div', {style: `width:${pct}%`})));
+    }
+
+    const urgent = Number.isFinite(group.daysLeft) && group.daysLeft <= 7;
+    const rt = el('div', {class: 'brt'},
+      el('div', {class: 'bamt'},
+        `${fmtMoney(group.spent, group.symbol)} `,
+        el('span', {class: 'of',
+          text: `/ ${fmtMoney(group.target, group.symbol)}`})),
+      el('div', {class: urgent ? 'bdays urgent' : 'bdays',
+        text: daysLabel(group.daysLeft)}));
+
+    const row = el('div', {class: 'brow'}, logo, mn, rt);
+    const expanded = state.benefitsExpanded.has(group.key);
+    if (group.multiCard) {
+      row.append(el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
+    }
+
+    if (!group.multiCard) return row;
+
+    const wrap = el('div', {class: expanded ? 'bgrp exp' : 'bgrp'});
+    row.onclick = () => {
+      if (expanded) state.benefitsExpanded.delete(group.key);
+      else state.benefitsExpanded.add(group.key);
+      render();
+    };
+    wrap.append(row);
+    if (expanded) wrap.append(renderBenefitBreakdown(group));
+    return wrap;
+  }
+
+  /**
+   * @param {!Object} group A multi-card benefit group.
+   * @return {!Element} Per-card breakdown rows.
+   */
+  function renderBenefitBreakdown(group) {
+    const box = el('div', {class: 'bsub'});
+    for (const e of group.entries) {
+      const pct = e.target > 0 ?
+        Math.min(100, Math.round(e.spent / e.target * 100)) : 0;
+      const sw = el('span', {class: 'sw', style: `background:${swatchStyle(
+        e.token)}`});
+      box.append(el('div', {class: 'bsubrow'}, sw,
+        el('span', {class: 'bsubcard', text: `…${e.digits}`}),
+        el('div', {class: 'bbar grow'}, el('div', {style: `width:${pct}%`})),
+        el('span', {class: 'bsubamt',
+          text: `${fmtMoney(e.spent, e.symbol)} / ` +
+            `${fmtMoney(e.target, e.symbol)}`})));
+    }
+    return box;
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -1909,7 +2318,8 @@
 
   /** @param {!Element} shell Panel content root. */
   function renderEmptyView(shell) {
-    shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true}));
+    shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true,
+      refresh: true, tabs: true}));
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
       el('div', {class: 'cir ok', text: '✓'}),
       el('div', {class: 'h', text: '暂无可加的 offer'}),
