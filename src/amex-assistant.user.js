@@ -1131,6 +1131,9 @@
     view: 'list',
     run: null,
     errorMessage: '',
+    // Tasks awaiting the confirm dialog, and the last run's summary strip.
+    pendingTasks: null,
+    lastRun: null,
     // Which top-level tab is showing: 'offers' or 'benefits'.
     tab: 'offers',
     // Benefits tab state (loaded lazily on first switch).
@@ -1487,6 +1490,42 @@
       border-radius: 9px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
     .bfoot { border-top: 1px solid var(--line); padding: 10px 18px;
       background: #fff; flex: none; }
+    /* Last-run strip */
+    .lastrun { display: flex; align-items: center; gap: 5px; padding: 7px 18px;
+      background: #FAFBFC; border-bottom: 1px solid var(--line2);
+      font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
+    .lastrun .sp { flex: 1; }
+    .lastrun .when { color: var(--mut); }
+    /* Confirm dialog */
+    .cfwrap { position: relative; }
+    .cfdim { opacity: .4; pointer-events: none; }
+    .cfsk { padding: 14px 18px; display: flex; flex-direction: column;
+      gap: 12px; background: #fff; }
+    .skrow { display: flex; gap: 11px; align-items: center; }
+    .sklogo { width: 40px; height: 40px; border-radius: 4px; flex: none;
+      background: var(--card); }
+    .skmn { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+    .skl { height: 10px; border-radius: 2px; background: var(--card); }
+    .skl.a { width: 52%; }
+    .skl.b { width: 74%; height: 9px; background: #F7F8F9; }
+    .cfov { position: absolute; inset: 0; background: rgba(0, 23, 90, .30);
+      display: flex; align-items: center; justify-content: center;
+      padding: 26px; }
+    .cfdlg { background: #fff; border-radius: 6px; width: 100%; padding: 20px;
+      box-shadow: 0 12px 32px rgba(0, 23, 90, .35); }
+    .cf-t { font-size: 14px; font-weight: 800; color: var(--navy); }
+    .cf-d { font-size: 12px; color: var(--sub); line-height: 1.6;
+      margin-top: 7px; }
+    .cf-d b { color: var(--ink); }
+    .cf-sum { margin-top: 10px; background: #F7F8F9; border: 1px solid #EDEEF0;
+      border-radius: 4px; padding: 9px 12px; font-size: 11.5px;
+      color: var(--sub); line-height: 1.7; font-variant-numeric: tabular-nums; }
+    .cf-btns { display: flex; gap: 10px; margin-top: 16px;
+      justify-content: flex-end; }
+    .cf-cancel { border: 1px solid #D5D7DB; color: var(--sub); font-size: 12.5px;
+      font-weight: 600; border-radius: 4px; padding: 9px 18px; cursor: pointer; }
+    .cf-ok { background: var(--blue); color: #fff; font-size: 12.5px;
+      font-weight: 700; border-radius: 4px; padding: 9px 18px; cursor: pointer; }
   `;
 
   /**
@@ -1761,7 +1800,8 @@
     }
     const views = {list: renderListView, loading: renderLoadingView,
       running: renderRunningView, result: renderResultView,
-      empty: renderEmptyView, error: renderErrorView};
+      empty: renderEmptyView, error: renderErrorView,
+      confirm: renderConfirmView};
     (views[state.view] || renderListView)(shell);
   }
 
@@ -1863,12 +1903,49 @@
           onclick: () => clearSelection(body)})));
     body.append(tb);
 
+    if (state.lastRun) body.append(renderLastRunStrip());
+
     const list = el('div', {class: 'list', id: 'list'});
     body.append(list);
     shell.append(body);
     renderRows(body);
 
     shell.append(renderFooter());
+  }
+
+  /** @return {!Element} The "上次执行" summary strip. */
+  function renderLastRunStrip() {
+    const r = state.lastRun;
+    const strip = el('div', {class: 'lastrun'});
+    strip.append(document.createTextNode('上次执行：'));
+    strip.append(el('b', {class: 'g', text: `${r.confirmed} 确认已加`}));
+    strip.append(document.createTextNode(' · '));
+    strip.append(el('b', {class: 'r', text: `${r.failed} 失败`}));
+    strip.append(document.createTextNode(' · '));
+    strip.append(el('b', {class: 'am', text: `${r.dedupe} 疑似去重`}));
+    strip.append(el('span', {class: 'when', text: ` · ${whenLabel(r.at)}`}));
+    strip.append(el('div', {class: 'sp'}));
+    strip.append(el('span', {class: 'lnk', text: '查看', onclick: () => {
+      state.view = 'result';
+      render();
+    }}));
+    return strip;
+  }
+
+  /**
+   * A short clock label: `今天 14:32` / `昨天 14:32` / `7/4 14:32`.
+   * @param {number} ts Epoch ms.
+   * @return {string} Label.
+   */
+  function whenLabel(ts) {
+    const d = new Date(ts);
+    const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const today = new Date();
+    const sameDay = (a, b) => a.toDateString() === b.toDateString();
+    const yest = new Date(today.getTime() - 86400000);
+    if (sameDay(d, today)) return `今天 ${hm}`;
+    if (sameDay(d, yest)) return `昨天 ${hm}`;
+    return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
   }
 
   /** @param {!Element} body Panel body (contains #list). */
@@ -2316,6 +2393,49 @@
     return row;
   }
 
+  /** @return {!Element} A gray placeholder row (loading / dimmed backdrop). */
+  function skeletonRow() {
+    return el('div', {class: 'skrow'},
+      el('div', {class: 'sklogo'}),
+      el('div', {class: 'skmn'},
+        el('div', {class: 'skl a'}), el('div', {class: 'skl b'})));
+  }
+
+  /** @param {!Element} shell Panel content root (pre-submit confirm dialog). */
+  function renderConfirmView(shell) {
+    const tasks = state.pendingTasks || [];
+    const byOffer = new Map();
+    for (const t of tasks) byOffer.set(t.name, (byOffer.get(t.name) || 0) + 1);
+
+    const wrap = el('div', {class: 'cfwrap'});
+    const dim = el('div', {class: 'cfdim'});
+    dim.append(renderHeader({glyph: '＋', title: 'Amex 助手'}));
+    const sk = el('div', {class: 'cfsk'});
+    for (let i = 0; i < 4; i++) sk.append(skeletonRow());
+    dim.append(sk);
+    wrap.append(dim);
+
+    const dlg = el('div', {class: 'cfdlg'});
+    dlg.append(el('div', {class: 'cf-t',
+      text: `同时提交 ${tasks.length} 个添加？`}));
+    dlg.append(el('div', {class: 'cf-d'},
+      `已选 ${byOffer.size} 个 offer，共 ${tasks.length} 个 offer×卡，会`,
+      el('b', {text: '一次性同时提交'}),
+      '，提交后不可撤销。完成后会重新读取已加列表，逐卡确认。'));
+    const sum = el('div', {class: 'cf-sum'});
+    for (const [name, n] of byOffer) {
+      sum.append(el('div', {text: `${name} → ${n} 张卡`}));
+    }
+    dlg.append(sum);
+    dlg.append(el('div', {class: 'cf-btns'},
+      el('div', {class: 'cf-cancel', text: '取消',
+        onclick: () => cancelConfirm()}),
+      el('div', {class: 'cf-ok', text: '确认提交',
+        onclick: () => confirmRun()})));
+    wrap.append(el('div', {class: 'cfov'}, dlg));
+    shell.append(wrap);
+  }
+
   /** @param {!Element} shell Panel content root. */
   function renderEmptyView(shell) {
     shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true,
@@ -2391,7 +2511,34 @@
   async function runSelected(presetTasks) {
     const tasks = presetTasks || buildTasks();
     if (tasks.length === 0) return;
+    if (presetTasks) return doRun(tasks, true);
+    // A fresh submit goes through the confirm dialog first.
+    state.pendingTasks = tasks;
+    state.view = 'confirm';
+    render();
+  }
 
+  /** Confirms the pending submit and runs it. */
+  function confirmRun() {
+    const tasks = state.pendingTasks;
+    state.pendingTasks = null;
+    if (tasks && tasks.length) doRun(tasks, false);
+  }
+
+  /** Cancels the confirm dialog and returns to the list. */
+  function cancelConfirm() {
+    state.pendingTasks = null;
+    state.view = 'list';
+    render();
+  }
+
+  /**
+   * Runs a task list, driving the running → result views.
+   * @param {!Array<!Task>} tasks Tasks to submit.
+   * @param {boolean} isRetry Whether these are re-sent failed pairs.
+   * @return {!Promise<void>} Resolves when the result view is shown.
+   */
+  async function doRun(tasks, isRetry) {
     state.view = 'running';
     state.run = {tasks, total: tasks.length, results: []};
     render();
@@ -2404,7 +2551,7 @@
       });
       // A retry merges over the previous report so pairs settled earlier
       // (verified, landed, gone) stay visible; a fresh run starts clean.
-      const merged = presetTasks ? state.lastResults : new Map();
+      const merged = isRetry ? state.lastResults : new Map();
       for (const r of results) merged.set(`${r.key}|${r.token}`, r);
       state.lastResults = merged;
       state.selected.clear();
@@ -2418,12 +2565,25 @@
           state.offers = buildOfferIndex(state.cards);
         } catch { /* keep previous list; result view still shows outcomes */ }
       }
+      setLastRunSummary();
       state.view = 'result';
     } catch (error) {
       state.errorMessage = `添加过程中断：${error.message}`;
       state.view = 'error';
     }
     render();
+  }
+
+  /** Records a compact summary of the last run for the list-view strip. */
+  function setLastRunSummary() {
+    const vals = [...state.lastResults.values()];
+    const count = (s) => vals.filter((r) => r.state === s).length;
+    state.lastRun = {
+      confirmed: count(ResultState.VERIFIED),
+      failed: count(ResultState.FAILED),
+      dedupe: count(ResultState.GHOST),
+      at: Date.now(),
+    };
   }
 
   /**
