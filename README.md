@@ -24,7 +24,7 @@ cards — how much you've used, what's expiring, and what's left to activate.
 
 <br>
 
-<table>
+<table align="center">
 <tr valign="top">
 <td width="33%"><img src="docs/panel.png" alt="Offers list across cards"><br><sub><b>Offers</b> — pick one, add it to every eligible card</sub></td>
 <td width="33%"><img src="docs/result.png" alt="Per-card verification result"><br><sub><b>Verify</b> — re-reads each card, reports what actually landed</sub></td>
