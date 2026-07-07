@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.19.0
+// @version      0.19.1
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -182,6 +182,8 @@
       launcherTitle: 'Amex 助手',
       refresh: '刷新',
       close: '关闭',
+      // Target-language on purpose (pairs with the 'EN' glyph at the call
+      // site): whoever needs this control may not read Chinese.
       switchLang: 'Switch to English',
       // Offers list
       listSubtitle: '{offers} 个 offer · {cards} 张卡',
@@ -217,12 +219,12 @@
       loadingOffers: '正在读取每张卡的 offer…',
       loadingCardN: '第 {done} / {total} 张卡',
       loadingCardList: '正在读取卡列表…',
-      loadingReadOnly: '这里只读取 Offer 列表，不会改动账户',
+      loadingReadOnly: '这里只读取 offer 列表，不会改动账户',
       // Confirm dialog
       confirmTitle: '确认添加到 {n} 张卡？',
       confirmBody1: '已选 {offers} 个 offer，共 {cards} 张卡。系统会',
       confirmBodyBold: '一次性提交这些请求',
-      confirmBody2: '；提交后不能撤销。完成后会重新读取已加列表，逐张卡核对。',
+      confirmBody2: '；提交后不能撤销。完成后会重新读取已添加列表，逐张卡核对。',
       confirmRowCards: '{name} → {n} 张卡',
       cancel: '取消',
       confirmSubmit: '确认提交',
@@ -234,7 +236,7 @@
       submitFail: '提交失败',
       submitting: '提交中',
       notSubmitted: '未提交',
-      runningNote: '提交完成后会重新读取已加列表，逐张卡核对结果',
+      runningNote: '提交完成后会重新读取已添加列表，逐张卡核对结果',
       // Result
       resultTitleOk: '添加完成，已核对',
       resultTitleStopped: '已停止本轮添加',
@@ -246,9 +248,9 @@
       throttledBody: '收到 429/403 或异常响应后，剩余请求已经停止，' +
           '也没有继续复查。建议等几分钟再点「重试未完成项」，不要马上反复提交。',
       dedupeHelpTitle: '什么是疑似去重？',
-      dedupeHelpBody: 'Amex 接口说添加成功，但重新读取已加列表时，' +
+      dedupeHelpBody: 'Amex 接口返回添加成功，但重新读取已添加列表时，' +
           '这张卡上没有看到该 offer，就会归到这里。常见原因是同一个 offer ' +
-          '可能只能加到一张卡；「无法确认」表示复查没有读完。',
+          '可能只能加到一张卡；「无法确认」表示复查未完成。',
       secSkipped: '未提交 — 检测到限流后中止',
       secGhost: '疑似去重 — 接口成功，但复查没看到',
       secUnverified: '无法确认 — 复查未完成',
@@ -258,9 +260,9 @@
       runInterrupted: '添加过程中断：{msg}',
       // Empty / error
       emptyTitle: '暂无可加的 offer',
-      emptyBody: '当前 offer 都已加到可用的卡上。',
+      emptyBody: '当前 offer 都已添加到可用的卡上。',
       reload: '↻ 重新读取',
-      errorTitle: '读取 Offer 列表失败',
+      errorTitle: '读取 offer 列表失败',
       errorSessionHint: '登录状态可能已过期。请先在当前页面登录 Amex，再重试。',
       retry: '重试',
       cardsReadAllFailed: '卡片 offer 读取失败，请稍后重试。',
@@ -269,7 +271,7 @@
       updatedJustNow: '刚刚更新',
       updatedMinsAgo: '{n} 分钟前更新',
       updatedHoursAgo: '{n} 小时前更新',
-      loadingBenefits: '正在读取每张卡的 benefits…',
+      loadingBenefits: '正在读取每张卡的 benefit 信息…',
       benefitsReadOnly: '只读查看，不会改动账户',
       benefitsReadFailed: '读取失败',
       searchBenefits: '搜索 benefit 或卡',
@@ -299,13 +301,14 @@
       launcherTitle: 'Amex Assistant',
       refresh: 'Refresh',
       close: 'Close',
+      // Target-language on purpose; see zh.switchLang.
       switchLang: '切换到中文',
       // Offers list
       listSubtitle: '{offers} offers · {cards} cards',
       searchOffers: 'Search merchants or offers',
       allCards: 'All cards',
       multiOnly: 'Multi-card only',
-      selectAllAddable: 'Select all addable',
+      selectAllAddable: 'Select all eligible',
       clearSelection: 'Clear',
       cardsReadFailed: '{n} card(s) could not be read.',
       cardsReadFailedNote: 'Offers on {names} could not be read this time ' +
@@ -316,21 +319,21 @@
       footerSelMid: ' offer(s) · will try adding to ',
       footerSelSuffix: ' card(s)',
       addedToAll: 'Added to all {n} cards',
-      addableN: '{n} addable',
+      addableN: '{n} eligible',
       addedN: '{n} added',
       chooseCards: 'Choose which cards to add to',
       addedMark: 'Added ✓',
-      expiresShort: 'til {date}',
+      expiresShort: 'Expires {date}',
       // Last-run strip
       lastRunPrefix: 'Last run: ',
       lastRunConfirmed: '{n} confirmed',
       lastRunFailed: '{n} failed',
-      lastRunDedupe: '{n} suspected dedupe',
+      lastRunDedupe: '{n} possible duplicate(s)',
       view: 'View',
       today: 'Today {time}',
       yesterday: 'Yesterday {time}',
       // Loading
-      loadingSubtitle: 'One offer, onto several cards',
+      loadingSubtitle: 'One offer, multiple cards',
       loadingOffers: 'Reading offers on each card…',
       loadingCardN: 'Card {done} / {total}',
       loadingCardList: 'Reading your card list…',
@@ -361,19 +364,19 @@
       resultSubtitle: '{n} add requests processed',
       confirmedAdded: 'Confirmed',
       addFailed: 'Failed',
-      dedupeOrUnknown: 'Dedupe / unconfirmed',
+      dedupeOrUnknown: 'Possible duplicate / unconfirmed',
       throttledTitle: 'Throttling or interception detected.',
       throttledBody: 'After a 429/403 or an abnormal response, the ' +
           'remaining requests were stopped and verification was skipped. ' +
           'Wait a few minutes before pressing "Retry unfinished" — do not ' +
           'resubmit right away.',
-      dedupeHelpTitle: 'What is "suspected dedupe"?',
-      dedupeHelpBody: 'The API reported success, but on re-reading the ' +
+      dedupeHelpTitle: 'What is "possible duplicate"?',
+      dedupeHelpBody: 'Amex reported success, but on re-reading the ' +
           'added list the offer was not on this card. Usually the same ' +
           'offer can only be added to one card. "Unconfirmed" means ' +
           'verification could not finish.',
       secSkipped: 'Not submitted — stopped after a throttle signal',
-      secGhost: 'Suspected dedupe — success reported, absent on re-read',
+      secGhost: 'Possible duplicate — success reported, absent on re-read',
       secUnverified: 'Unconfirmed — verification incomplete',
       retryUnfinished: 'Retry unfinished',
       exportCsv: 'Export CSV',
@@ -2605,6 +2608,7 @@
     if (unreadable.length) {
       body.append(el('div', {class: 'info'},
         el('b', {text: t('cardsReadFailed', {n: unreadable.length})}),
+        ' ',
         t('cardsReadFailedNote',
           {names: unreadable.map((c) => c.shortName).join(' / ')})));
     }
@@ -3250,8 +3254,8 @@
       onclick: () => chooseLanguage(lang),
     });
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
-      el('div', {class: 'cir ok', text: '文A',
-        style: 'font-size:14px;font-weight:700'}),
+      el('div', {class: 'cir ok', text: '文',
+        style: 'font-size:16px;font-weight:700'}),
       el('div', {class: 'h', text: '选择语言 · Choose your language'}),
       el('div', {class: 'txt',
         text: '之后可以在面板右上角随时切换 · ' +
