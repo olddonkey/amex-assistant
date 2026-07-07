@@ -12,7 +12,7 @@ import {afterEach, test} from 'node:test';
 import api from '../src/amex-assistant.user.js';
 import {createMockFetch, enrollHandlers, makeOffer} from './mock-fetch.mjs';
 
-const {executeSelected, planRetry, ResultState} = api;
+const {executeSelected, planRetry, resolveTasks, ResultState} = api;
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -337,6 +337,29 @@ test('planRetry settles landed and gone pairs without resending', () => {
   assert.equal(gone[0].state, ResultState.SKIPPED, 'original state kept');
   assert.equal(gone[0].gone, true);
   assert.match(gone[0].message, /no longer listed/);
+});
+
+test('resolveTasks re-resolves offerIds and splits landed/gone', () => {
+  const items = [
+    task('A', 'OLD-A', 'PZ'),
+    task('B', 'OLD-B', 'PZ'),
+    task('C', 'OLD-C', 'PZ'),
+  ];
+  // A is still addable (new offerId), B got the offer meanwhile, C's card no
+  // longer lists it.
+  const offers = [{key: 'PZ', name: 'offer', cards: [
+    {token: 'A', offerId: 'NEW-A', enrolled: false},
+    {token: 'B', offerId: 'NEW-B', enrolled: true},
+  ]}];
+
+  const {tasks, landed, gone} = resolveTasks(items, offers);
+
+  assert.deepEqual(tasks,
+    [{token: 'A', offerId: 'NEW-A', key: 'PZ', name: 'offer'}]);
+  assert.equal(landed.length, 1);
+  assert.equal(landed[0].token, 'B');
+  assert.equal(gone.length, 1);
+  assert.equal(gone[0].token, 'C');
 });
 
 test('planRetry does not offer a gone pair again', () => {

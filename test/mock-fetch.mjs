@@ -126,6 +126,16 @@ export function createMockFetch(scenario) {
 
     if (url.includes('ReadOffersHubPresentation')) {
       const token = body.accountNumberProxy;
+      // Optional test hook: may throw (network-style failure), or return a
+      // raw body / Response-like object to override this read. Returning
+      // undefined falls through to the default behavior below.
+      if (scenario.onReadOffers) {
+        const custom = scenario.onReadOffers(token, body);
+        if (custom) {
+          return typeof custom.json === 'function' ? custom :
+            jsonResponse(custom);
+        }
+      }
       if (body.requestType === 'OFFERSHUB_LANDING') {
         const pages = (scenario.eligiblePages || {})[token] || [];
         const index = body.offerPage ?

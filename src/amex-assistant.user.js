@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.17.1
+// @version      0.18.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -44,8 +44,10 @@
 
   /**
    * @typedef {{token: string, tag: string, name: string, shortName: string,
+   *            family: string, digits: string, relationship: string,
    *            art: string, eligible: !Array<!Object>,
-   *            enrolled: !Array<!Object>, enrolledKeys: !Set<string>}}
+   *            enrolled: !Array<!Object>, enrolledKeys: !Set<string>,
+   *            readFailed: boolean}}
    *     CardSnapshot
    */
 
@@ -130,6 +132,13 @@
    * misclassifies real successes as GHOST.
    */
   const VERIFY_SETTLE_MS = 2500;
+
+  /**
+   * Age (ms) beyond which the snapshot behind a submit is considered stale:
+   * per-card offerIds may have rotated since it was read, so the involved
+   * cards are re-read and the tasks re-resolved just before sending.
+   */
+  const SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000;
 
   /**
    * `requestType` values understood by the offers hub. `OFFERSHUB_LANDING`
@@ -361,6 +370,31 @@
   }
 
   /**
+   * Runs a request, re-sending it quickly when it fails with a transient
+   * error (network hiccup or 5xx). Definitive answers — other 4xx, blocked
+   * signals, non-JSON — are thrown through untouched. For idempotent reads
+   * only; enroll has its own window-sensitive retry policy in
+   * {@link attemptEnroll}.
+   *
+   * @param {function(): !Promise<T>} fn The request to run.
+   * @param {function(): !Promise<void>=} retryDelay Pause between tries.
+   * @param {number=} retries Extra attempts after the first.
+   * @return {!Promise<T>} `fn`'s result.
+   * @template T
+   */
+  async function retryTransient(fn, retryDelay = randomRetryDelay,
+    retries = 1) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (!error.transient || attempt >= retries) throw error;
+        await retryDelay();
+      }
+    }
+  }
+
+  /**
    * Reads one page of the offers hub for a card.
    *
    * @param {string} token The card's `account_token`.
@@ -377,10 +411,11 @@
 
   /**
    * Lists the logged-in member's card accounts.
+   * @param {function(): !Promise<void>=} retryDelay Pause between read tries.
    * @return {!Promise<!Array<!Object>>} Raw account objects.
    */
-  async function fetchAccounts() {
-    const data = await getJson(MEMBER_URL);
+  async function fetchAccounts(retryDelay = randomRetryDelay) {
+    const data = await retryTransient(() => getJson(MEMBER_URL), retryDelay);
     return Array.isArray(data.accounts) ? data.accounts : [];
   }
 
@@ -410,16 +445,18 @@
 
   /**
    * Fetches every eligible MERCHANT offer for a card, walking pages until an
-   * empty page is returned.
+   * empty page is returned. Each page read retries once on a transient error.
    *
    * @param {string} token The card's `account_token`.
+   * @param {function(): !Promise<void>=} retryDelay Pause between read tries.
    * @return {!Promise<!Array<!Object>>} Raw eligible offers.
    */
-  async function fetchEligibleOffers(token) {
+  async function fetchEligibleOffers(token, retryDelay = randomRetryDelay) {
     const offers = [];
     for (let i = 1; i <= MAX_PAGES; i++) {
       const page = `page${i}`;
-      const data = await readOffersHub(token, RequestType.ELIGIBLE, page);
+      const data = await retryTransient(
+        () => readOffersHub(token, RequestType.ELIGIBLE, page), retryDelay);
       const items = getPath(data, `recommendedOffers.offersList.${page}`);
       if (!Array.isArray(items) || items.length === 0) break;
       for (const offer of items) {
@@ -430,13 +467,16 @@
   }
 
   /**
-   * Fetches the offers already added to a card (single page).
+   * Fetches the offers already added to a card (single page). Retries once on
+   * a transient error.
    *
    * @param {string} token The card's `account_token`.
+   * @param {function(): !Promise<void>=} retryDelay Pause between read tries.
    * @return {!Promise<!Array<!Object>>} Raw added-to-card offers.
    */
-  async function fetchEnrolledOffers(token) {
-    const data = await readOffersHub(token, RequestType.ENROLLED);
+  async function fetchEnrolledOffers(token, retryDelay = randomRetryDelay) {
+    const data = await retryTransient(
+      () => readOffersHub(token, RequestType.ENROLLED), retryDelay);
     const items = getPath(data, 'addedToCardViewAll.offersList.page1');
     return Array.isArray(items) ? items : [];
   }
@@ -444,10 +484,11 @@
   /**
    * Reads a card's added offers and returns their group keys as a set.
    * @param {string} token The card's `account_token`.
+   * @param {function(): !Promise<void>=} retryDelay Pause between read tries.
    * @return {!Promise<!Set<string>>} Added-offer group keys.
    */
-  async function fetchEnrolledKeys(token) {
-    const offers = await fetchEnrolledOffers(token);
+  async function fetchEnrolledKeys(token, retryDelay = randomRetryDelay) {
+    const offers = await fetchEnrolledOffers(token, retryDelay);
     return new Set(offers.map(offerGroupKey).filter(Boolean));
   }
 
@@ -584,12 +625,20 @@
    * any card is read; `onProgress` then fires once per card (starting at 0)
    * with the running total, letting the loading UI show honest progress.
    *
+   * Reads retry once on transient errors. A card whose reads still fail comes
+   * back with empty lists and `readFailed: true` instead of sinking the whole
+   * load — except on a blocked signal (throttle / interception), which aborts
+   * the snapshot so we stop reading into a wall.
+   *
    * @param {function(number, number)=} onProgress Called `(done, total)` as
    *     each card finishes reading. Defaults to a no-op.
+   * @param {{retryDelay: (function(): !Promise<void>|undefined)}=} options
+   *     Behavior overrides (tests inject a no-op delay).
    * @return {!Promise<!Array<!CardSnapshot>>} Per-card snapshot.
    */
-  async function snapshot(onProgress = () => {}) {
-    const accounts = flattenAccounts(await fetchAccounts())
+  async function snapshot(onProgress = () => {}, options = {}) {
+    const {retryDelay = randomRetryDelay} = options;
+    const accounts = flattenAccounts(await fetchAccounts(retryDelay))
       .filter((account) => account.account_token);
     const total = accounts.length;
     onProgress(0, total);
@@ -599,10 +648,18 @@
     let done = 0;
     return mapLimit(accounts, MAX_CONCURRENT_READS, async (account) => {
       const token = account.account_token;
-      const eligible = await fetchEligibleOffers(token);
-      const enrolled = await fetchEnrolledOffers(token);
-      const enrolledKeys =
-          new Set(enrolled.map(offerGroupKey).filter(Boolean));
+      let eligible = [];
+      let enrolled = [];
+      let readFailed = false;
+      try {
+        eligible = await fetchEligibleOffers(token, retryDelay);
+        enrolled = await fetchEnrolledOffers(token, retryDelay);
+      } catch (error) {
+        // A blocked signal means every further read would hit the same wall
+        // — abort the whole load. Anything else skips just this card.
+        if (error.blocked) throw error;
+        readFailed = true;
+      }
       onProgress(++done, total);
       return {
         token,
@@ -615,7 +672,8 @@
         art: getPath(account, 'product.small_card_art') || '',
         eligible,
         enrolled,
-        enrolledKeys,
+        enrolledKeys: new Set(enrolled.map(offerGroupKey).filter(Boolean)),
+        readFailed,
       };
     });
   }
@@ -867,8 +925,10 @@
     let done = 0;
     const perCard = await mapLimit(owned, MAX_CONCURRENT_READS,
       async (card) => {
-        const trackers = await fetchAccountBenefits(card.token);
-        const catalog = await fetchCardCatalog(card.token);
+        const trackers = await retryTransient(
+          () => fetchAccountBenefits(card.token));
+        const catalog = await retryTransient(
+          () => fetchCardCatalog(card.token));
         onProgress(++done, total);
         return {card, trackers, catalog};
       });
@@ -1081,22 +1141,20 @@
   }
 
   /**
-   * Reads a card's added-offer keys, retrying once on a transient failure.
-   * Reads are idempotent, so one cheap retry converts most would-be UNVERIFIED
-   * outcomes into real answers. A blocked signal is not retried.
+   * Reads a card's added-offer keys, tolerating failure. Transient errors
+   * already retry inside {@link fetchEnrolledKeys}; anything that still fails
+   * returns null so the card's attempts classify UNVERIFIED instead of the
+   * whole run throwing.
    *
    * @param {string} token The card's `account_token`.
-   * @param {function(): !Promise<void>} retryDelay Pause before the retry.
+   * @param {function(): !Promise<void>} retryDelay Pause between read tries.
    * @return {!Promise<?Set<string>>} Added-offer keys, or null if unreadable.
    */
   async function readEnrolledKeysSafe(token, retryDelay) {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return await fetchEnrolledKeys(token);
-      } catch (error) {
-        if (error.blocked || attempt >= 1) return null;
-        await retryDelay();
-      }
+    try {
+      return await fetchEnrolledKeys(token, retryDelay);
+    } catch {
+      return null;
     }
   }
 
@@ -1221,26 +1279,50 @@
    *     settled without resending.
    */
   function planRetry(results, offers) {
+    const retryable = results.filter((result) =>
+      (result.state === ResultState.FAILED ||
+       result.state === ResultState.SKIPPED) && !result.gone);
+    const {tasks, landed, gone} = resolveTasks(retryable, offers);
+    const note = 'offer no longer listed for this card';
+    return {
+      tasks,
+      landed: landed.map((r) => ({...r, state: ResultState.VERIFIED,
+        message: 'already on the card (found before retrying)'})),
+      gone: gone.map((r) => ({...r, gone: true,
+        message: r.message ? `${r.message} · ${note}` : note})),
+    };
+  }
+
+  /**
+   * Re-resolves task-like items against a fresh offer index. Pure: no I/O.
+   *
+   * Per-card offerIds can rotate between reads, so an item built from an older
+   * snapshot may carry a stale token; each one is re-resolved to the card's
+   * current `offerId` by group key. Items whose card now shows the offer as
+   * added come back in `landed`; items whose card no longer lists the offer
+   * come back in `gone` (the enrollment window is closed). Both are returned
+   * as given, untouched.
+   *
+   * @param {!Array<!Object>} items Items with `token`, `key`, `name`.
+   * @param {!Array<!OfferGroup>} offers The current offer index.
+   * @return {{tasks: !Array<!Task>, landed: !Array<!Object>,
+   *           gone: !Array<!Object>}} Re-resolved tasks plus the items that
+   *     need no send.
+   */
+  function resolveTasks(items, offers) {
     const tasks = [];
     const landed = [];
     const gone = [];
-    for (const result of results) {
-      const retryable = (result.state === ResultState.FAILED ||
-          result.state === ResultState.SKIPPED) && !result.gone;
-      if (!retryable) continue;
-      const group = offers.find((g) => g.key === result.key);
-      const card = group &&
-          group.cards.find((c) => c.token === result.token);
+    for (const item of items) {
+      const group = offers.find((g) => g.key === item.key);
+      const card = group && group.cards.find((c) => c.token === item.token);
       if (card && card.enrolled) {
-        landed.push({...result, state: ResultState.VERIFIED,
-          message: 'already on the card (found before retrying)'});
+        landed.push(item);
       } else if (!card) {
-        const note = 'offer no longer listed for this card';
-        gone.push({...result, gone: true,
-          message: result.message ? `${result.message} · ${note}` : note});
+        gone.push(item);
       } else {
-        tasks.push({token: result.token, offerId: card.offerId,
-          key: result.key, name: result.name});
+        tasks.push({token: item.token, offerId: card.offerId,
+          key: item.key, name: item.name});
       }
     }
     return {tasks, landed, gone};
@@ -1264,9 +1346,11 @@
     enrollOffer,
     isEnrollSuccess,
     mapLimit,
+    retryTransient,
     snapshot,
     executeSelected,
     planRetry,
+    resolveTasks,
     fetchAccountBenefits,
     fetchCardCatalog,
     fetchAllBenefits,
@@ -1318,6 +1402,9 @@
     view: 'list',
     run: null,
     errorMessage: '',
+    // When the offers snapshot was last read (epoch ms); a submit against a
+    // stale snapshot re-reads the involved cards first (offerIds rotate).
+    snapshotAt: 0,
     // Tasks awaiting the confirm dialog, and the last run's summary strip.
     pendingTasks: null,
     lastRun: null,
@@ -2129,6 +2216,14 @@
           onclick: () => clearSelection(body)})));
     body.append(tb);
 
+    const unreadable = state.cards.filter((c) => c.readFailed);
+    if (unreadable.length) {
+      body.append(el('div', {class: 'info'},
+        el('b', {text: `${unreadable.length} 张卡读取失败。`}),
+        `${unreadable.map((c) => c.shortName).join('、')} 的 offer 本次未能` +
+          '读取，列表暂不含这些卡；点右上角 ↻ 重试。'));
+    }
+
     if (state.lastRun) body.append(renderLastRunStrip());
 
     const list = el('div', {class: 'list', id: 'list'});
@@ -2835,6 +2930,22 @@
     state.run = {tasks, total: tasks.length, results: []};
     render();
     try {
+      // A snapshot that has sat around long enough may carry rotated
+      // offerIds; re-read the involved cards and re-resolve before sending.
+      if (state.snapshotAt &&
+          Date.now() - state.snapshotAt > SNAPSHOT_MAX_AGE_MS) {
+        tasks = await freshenTasks(tasks);
+        if (tasks.length === 0) {
+          // Everything already landed or is no longer available; the list
+          // (rebuilt from the fresh reads) tells that story.
+          state.selected.clear();
+          state.view = 'list';
+          render();
+          return;
+        }
+        state.run = {tasks, total: tasks.length, results: []};
+        render();
+      }
       const results = await executeSelected(tasks, {
         onSettle: (attempt) => {
           state.run.results.push(attempt);
@@ -2855,6 +2966,7 @@
         try {
           state.cards = await snapshot();
           state.offers = buildOfferIndex(state.cards);
+          state.snapshotAt = Date.now();
         } catch { /* keep previous list; result view still shows outcomes */ }
       }
       setLastRunSummary();
@@ -2864,6 +2976,37 @@
       state.view = 'error';
     }
     render();
+  }
+
+  /**
+   * Re-reads the cards involved in `tasks` and re-resolves each task against
+   * the fresh data (see {@link resolveTasks}). Used when the snapshot backing
+   * the selection is old enough that offerIds may have rotated. If the
+   * re-read fails, the original tasks are returned unchanged — better to
+   * attempt with what we have than to block the run.
+   * @param {!Array<!Task>} tasks Tasks about to run.
+   * @return {!Promise<!Array<!Task>>} Tasks carrying fresh offerIds; may be
+   *     smaller when pairs turn out to be already added or gone.
+   */
+  async function freshenTasks(tasks) {
+    const tokens = [...new Set(tasks.map((t) => t.token))];
+    try {
+      await mapLimit(tokens, MAX_CONCURRENT_READS, async (token) => {
+        const card = cardOf(token);
+        if (!card) return;
+        const eligible = await fetchEligibleOffers(token);
+        const enrolled = await fetchEnrolledOffers(token);
+        card.eligible = eligible;
+        card.enrolled = enrolled;
+        card.enrolledKeys =
+            new Set(enrolled.map(offerGroupKey).filter(Boolean));
+        card.readFailed = false;
+      });
+      state.offers = buildOfferIndex(state.cards);
+    } catch {
+      return tasks;
+    }
+    return resolveTasks(tasks, state.offers).tasks;
   }
 
   /** Records a compact summary of the last run for the list-view strip. */
@@ -3052,8 +3195,16 @@
         if (state.view === 'loading') render();
       });
       state.offers = buildOfferIndex(state.cards);
+      state.snapshotAt = Date.now();
       loaded = true;
-      state.view = state.offers.length ? 'list' : 'empty';
+      if (!state.offers.length && state.cards.some((c) => c.readFailed)) {
+        // Nothing usable came back — surface the failure rather than an
+        // (untrue) "no offers" empty state.
+        state.errorMessage = '卡片 offer 读取失败，请稍后重试。';
+        state.view = 'error';
+      } else {
+        state.view = state.offers.length ? 'list' : 'empty';
+      }
     } catch (error) {
       state.errorMessage = `${error.message}`;
       state.view = 'error';

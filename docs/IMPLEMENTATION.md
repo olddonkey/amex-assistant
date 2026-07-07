@@ -120,3 +120,12 @@ M1–M3 全部合并；用户已过 M0 与首次真实 enroll 冒烟；面板能
 - **可观测**：结果对象与 CSV 导出新增 `http_status` 原始状态码（配合原始 message），用于事后区分失败类型（瞬时错误 / 业务拒绝 / 限流）。
 - 新终态 `skipped`（未提交）贯穿分类、面板计数、结果分区与重试按钮；`executeSelected` 新增可注入的 `retryDelay` / `settleDelay`（测试注入 no-op 保持秒级跑完）。
 - **重试更聪明**（`planRetry`，纯函数可测）：「重试未完成项」重发前先对照当前快照——每卡 `offerId` 按分组 key 重新解析（旧 token 可能已轮换）；快照显示已在卡上的直接改判 `verified`（假失败实为成功，不重发）；已不在该卡 offer 列表的标注"窗口已关"并停止再次重试。重试结果**合并**进上一轮报告（普通 run 仍从头开始），已核实的条目不会从结果页消失。
+
+---
+
+## 8. v0.18.0 — 读取路径健壮性 + 快照过期防护
+
+- **读请求瞬时重试**（`retryTransient`）：member / offers hub / benefits 的读请求遇网络错误或 5xx 快速重试一次；其余 4xx、拦截信号、非 JSON 直接抛出。enroll 不走这个 helper——它有自己的窗口敏感重试策略（见 §7）。
+- **单卡失败不再拖垮整个面板**：snapshot 中某张卡重试后仍读取失败 → 该卡标 `readFailed`、offer 列表为空，其余卡照常展示，列表页顶部有提示条指出哪些卡缺失；全部读取失败（无任何 offer）则进错误页而不是误导性的"暂无 offer"。读取途中收到 429/401/403 等拦截信号仍整体中止（不往墙上继续撞）。
+- **快照过期防护**（`SNAPSHOT_MAX_AGE_MS` = 10 分钟）：提交（含确认对话框后的正式 run 与重试）时若快照已老化，先并发（capped）重读涉及卡的 eligible / 已加列表，用 `resolveTasks`（从 `planRetry` 抽出的纯函数）按分组 key 换成新 `offerId`；期间发现已加上或已下架的对子不再提交。重读失败则按原 token 照发——宁可试也不阻塞。
+- `refresh` 与跑完后的自动刷新记录 `snapshotAt` 时间戳；`snapshot` 新增可注入 `retryDelay`（测试注入 no-op）。mock 新增 `onReadOffers` 钩子模拟单卡读取失败 / 限流。

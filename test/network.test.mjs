@@ -1,17 +1,22 @@
 /**
  * @fileoverview Tests for the network layer against the fetch mock: account
- * listing, eligible-offer pagination and filtering, and the snapshot builder.
+ * listing, eligible-offer pagination and filtering, the snapshot builder,
+ * transient-read retries, and per-card degradation on failed reads.
  */
 
 import assert from 'node:assert/strict';
 import {afterEach, test} from 'node:test';
 
 import api from '../src/amex-assistant.user.js';
-import {createMockFetch, makeOffer} from './mock-fetch.mjs';
+import {createMockFetch, jsonResponse, makeOffer} from './mock-fetch.mjs';
 
 const {
   fetchAccounts, fetchEligibleOffers, snapshot, buildOfferIndex, mapLimit,
+  retryTransient,
 } = api;
+
+/** A delay that resolves immediately so tests stay fast. */
+const noDelay = () => Promise.resolve();
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -105,6 +110,85 @@ test('snapshot builds per-card eligible + enrolled keys', async () => {
   assert.deepEqual(group.cards.map((c) => c.offerId), ['OA', 'OB']);
   assert.equal(group.cards.find((c) => c.token === 'TOKENA').enrolled, true);
   assert.equal(group.cards.find((c) => c.token === 'TOKENB').enrolled, false);
+});
+
+test('retryTransient retries transient errors and then succeeds', async () => {
+  let calls = 0;
+  const fn = async () => {
+    calls++;
+    if (calls === 1) {
+      throw Object.assign(new Error('boom'), {transient: true});
+    }
+    return 'ok';
+  };
+
+  assert.equal(await retryTransient(fn, noDelay), 'ok');
+  assert.equal(calls, 2);
+});
+
+test('retryTransient throws definitive errors through untouched', async () => {
+  let calls = 0;
+  const fn = async () => {
+    calls++;
+    throw Object.assign(new Error('HTTP 400'), {transient: false});
+  };
+
+  await assert.rejects(() => retryTransient(fn, noDelay), /HTTP 400/);
+  assert.equal(calls, 1, 'a definitive answer is not re-sent');
+});
+
+test('snapshot retries a flaky read and recovers the card', async () => {
+  let failed = false;
+  useScenario({
+    accounts: [{account_token: 'A'}],
+    eligiblePages: {A: [[makeOffer('OA')]]},
+    enrolledState: {A: []},
+    onReadOffers(token, body) {
+      if (!failed && body.requestType === 'OFFERSHUB_LANDING') {
+        failed = true;
+        throw new Error('flaky read');
+      }
+    },
+  });
+
+  const cards = await snapshot(undefined, {retryDelay: noDelay});
+
+  assert.equal(cards[0].readFailed, false);
+  assert.deepEqual(cards[0].eligible.map((o) => o.offerId), ['OA']);
+});
+
+test('snapshot skips a card whose reads keep failing', async () => {
+  useScenario({
+    accounts: [{account_token: 'A'}, {account_token: 'B'}],
+    eligiblePages: {A: [[makeOffer('OA')]], B: [[makeOffer('OB')]]},
+    enrolledState: {A: [], B: []},
+    onReadOffers(token) {
+      if (token === 'B') throw new Error('read down');
+    },
+  });
+
+  const cards = await snapshot(undefined, {retryDelay: noDelay});
+
+  const cardA = cards.find((c) => c.token === 'A');
+  const cardB = cards.find((c) => c.token === 'B');
+  assert.equal(cards.length, 2, 'the failing card is kept, not dropped');
+  assert.equal(cardA.readFailed, false);
+  assert.deepEqual(cardA.eligible.map((o) => o.offerId), ['OA']);
+  assert.equal(cardB.readFailed, true);
+  assert.deepEqual(cardB.eligible, []);
+  assert.deepEqual(cardB.enrolled, []);
+});
+
+test('snapshot aborts on a blocked read instead of degrading', async () => {
+  useScenario({
+    accounts: [{account_token: 'A'}],
+    eligiblePages: {A: [[makeOffer('OA')]]},
+    enrolledState: {A: []},
+    onReadOffers: () => jsonResponse({}, false, 429),
+  });
+
+  await assert.rejects(() => snapshot(undefined, {retryDelay: noDelay}),
+    (error) => error.httpStatus === 429 && error.blocked === true);
 });
 
 test('snapshot reports progress with the real card count', async () => {
