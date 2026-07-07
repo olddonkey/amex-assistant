@@ -125,7 +125,7 @@ body: { accountNumberProxy: "<account_token>", locale: "en-US", requestType: "AD
 → 取 response.addedToCardViewAll.offersList.page1  (数组)
    看目标 offerId 是否在其中 → true 才算真正加上
 ```
-- （另有 redeemed：`requestType: "SAVINGS_LANDING"`，listPath `offersSavingsViewAll.savingsOffers.offersList`，本工具用不到。）
+- 另有 redeemed：`requestType: "SAVINGS_LANDING"`，listPath `offersSavingsViewAll.savingsOffers.offersList`（分页 `page1` 或直接数组，两种形态都要兼容）。v0.20 起「已加」子视图用它标注每张卡的返现入账状态；条目上的金额 / 入账日期字段名未完全确认，实现按候选字段列表解析并允许缺省降级。
 
 ---
 
