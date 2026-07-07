@@ -1260,7 +1260,6 @@
       flex-direction: column; overflow: hidden;
       box-shadow: 0 8px 30px rgba(0,23,90,.18);
     }
-    .p.wide { width: 420px; }
     .hd {
       display: flex; flex-direction: column; background: #fff;
       border-bottom: 2px solid var(--blue); flex: none;
@@ -1801,8 +1800,6 @@
     const root = panelRoot;
     root.getElementById('shell').textContent = '';
     const shell = root.getElementById('shell');
-    // The benefits view is designed 20px wider than the offers view.
-    shell.classList.toggle('wide', state.tab === 'benefits');
     if (state.tab === 'benefits') {
       renderBenefitsTab(shell);
       return;
