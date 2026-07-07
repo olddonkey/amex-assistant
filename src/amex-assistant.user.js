@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.13.0
+// @version      0.14.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -567,14 +567,19 @@
       .filter((account) => account.account_token);
     const total = accounts.length;
     onProgress(0, total);
-    const cards = [];
-    for (const account of accounts) {
+    // Read every card in parallel (eligible + enrolled together); the old
+    // serial per-card loop made an 8-card account slow to load.
+    let done = 0;
+    return Promise.all(accounts.map(async (account) => {
       const token = account.account_token;
-      const eligible = await fetchEligibleOffers(token);
-      const enrolled = await fetchEnrolledOffers(token);
+      const [eligible, enrolled] = await Promise.all([
+        fetchEligibleOffers(token),
+        fetchEnrolledOffers(token),
+      ]);
       const enrolledKeys =
           new Set(enrolled.map(offerGroupKey).filter(Boolean));
-      cards.push({
+      onProgress(++done, total);
+      return {
         token,
         tag: String(token).slice(-4),
         name: cardName(account, token),
@@ -586,10 +591,8 @@
         eligible,
         enrolled,
         enrolledKeys,
-      });
-      onProgress(cards.length, total);
-    }
-    return cards;
+      };
+    }));
   }
 
   // ---------------------------------------------------------------------------
@@ -723,6 +726,21 @@
   }
 
   /**
+   * Whether a tracker is a dollar credit we should show (and count in stats).
+   * Excludes `category === "spend"` (spend-to-unlock milestones like Centurion
+   * / Delta Sky Club, whose target is a huge spend goal, not a credit) and
+   * pass-based perks (`targetUnit === "PASSES"`, e.g. lounge visits) that are
+   * not dollar amounts.
+   * @param {!Object} tracker Raw tracker object.
+   * @return {boolean} True for a spendable dollar credit.
+   */
+  function isTrackedCredit(tracker) {
+    const cat = String(tracker.category || '').toLowerCase();
+    const unit = String((tracker.tracker || {}).targetUnit || '').toUpperCase();
+    return cat !== 'spend' && unit !== 'PASSES';
+  }
+
+  /**
    * Reads a card's benefit catalog (every perk keyed by slug). The body is a
    * plain object (the array form is rejected). Returns {} on any failure so the
    * tracker view still works without it.
@@ -807,15 +825,23 @@
     const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
     const total = owned.length;
     onProgress(0, total);
-    const benefits = [];
-    const catalogs = [];
+    // Read every card in parallel (trackers + catalog together); the old
+    // per-card serial loop was the main source of the slow load.
     let done = 0;
-    for (const card of owned) {
-      const trackers = await fetchAccountBenefits(card.token);
-      const catalog = await fetchCardCatalog(card.token);
-      for (const t of trackers) benefits.push(normalizeBenefit(t, card));
-      catalogs.push({card, catalog});
+    const perCard = await Promise.all(owned.map(async (card) => {
+      const [trackers, catalog] = await Promise.all([
+        fetchAccountBenefits(card.token),
+        fetchCardCatalog(card.token),
+      ]);
       onProgress(++done, total);
+      return {card, trackers, catalog};
+    }));
+    const catalogs = perCard.map(({card, catalog}) => ({card, catalog}));
+    const benefits = [];
+    for (const {card, trackers} of perCard) {
+      for (const t of trackers) {
+        if (isTrackedCredit(t)) benefits.push(normalizeBenefit(t, card));
+      }
     }
 
     // Prefer the catalog's clean title where it maps to a tracker (fixes names
@@ -843,8 +869,12 @@
         if (c.layoutType !== 'NOTENROLLED' || !c.isEnrollable) continue;
         if (!c.sorBenefitId || tracked.has(c.sorBenefitId)) continue;
         if (added.has(c.sorBenefitId)) continue;
+        const b = catalogBenefit(c, card);
+        // Only surface dollar-credit perks (e.g. CLEAR $189), not status/link
+        // benefits like "Link Your Resy Profile" that have no amount.
+        if (b.target <= 0) continue;
         added.add(c.sorBenefitId);
-        benefits.push(catalogBenefit(c, card));
+        benefits.push(b);
       }
     }
     return benefits;

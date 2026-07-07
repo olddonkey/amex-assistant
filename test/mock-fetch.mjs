@@ -55,6 +55,7 @@ export function makeTracker(name, opts = {}) {
     spentAmount: String(opts.spent != null ? opts.spent : 0),
     targetCurrency: 'USD',
     targetCurrencySymbol: '$',
+    targetUnit: opts.unit || 'MONETARY',
   };
   if (opts.remaining != null) tracker.remainingAmount = String(opts.remaining);
   return {

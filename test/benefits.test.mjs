@@ -64,6 +64,28 @@ test('fetchAllBenefits reads only BASIC cards and tags each benefit',
     assert.deepEqual(progress, ['0/1', '1/1']);
   });
 
+test('fetchAllBenefits drops spend-to-unlock and pass-based trackers',
+  async () => {
+    globalThis.fetch = createMockFetch({
+      benefits: {
+        PLAT: [
+          makeTracker('$300 Digital Entertainment',
+            {sor: 'DE', category: 'usage', target: 20, spent: 8}),
+          // spend-to-unlock milestone (huge target) — must be dropped
+          makeTracker('Centurion Lounge via spend',
+            {sor: 'CENT', category: 'spend', target: 75000, spent: 2593}),
+          // pass-based lounge access — must be dropped
+          makeTracker('Delta Sky Club Visits',
+            {sor: 'DSC', category: 'access', unit: 'PASSES',
+              target: 10, spent: 3}),
+        ],
+      },
+    });
+    const benefits = await fetchAllBenefits([card('PLAT', 'Platinum', '1005')]);
+    assert.deepEqual(benefits.map((b) => b.sorBenefitId), ['DE'],
+      'only the usage dollar credit is kept');
+  });
+
 test('buildBenefitIndex groups the same benefit across cards by sorBenefitId',
   () => {
     const benefits = [
