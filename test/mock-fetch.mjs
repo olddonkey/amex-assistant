@@ -82,6 +82,10 @@ export function createMockFetch(scenario) {
       }
       if (body.requestType === 'ADDEDTOCARD_LANDING') {
         if (scenario.failVerify) throw new Error('verify read failed');
+        if (scenario.failVerifyTimes > 0) {
+          scenario.failVerifyTimes--;
+          throw new Error('verify read failed');
+        }
         const items = (scenario.enrolledState || {})[token] || [];
         return jsonResponse({addedToCardViewAll: {offersList: {page1: items}}});
       }
@@ -93,6 +97,9 @@ export function createMockFetch(scenario) {
       if (scenario.enrollGate) await scenario.enrollGate;
       const response =
           scenario.onEnroll(body.accountNumberProxy, body.offerId, scenario);
+      // A handler may return a ready-made Response-like object (e.g. an HTTP
+      // error built with jsonResponse) instead of a raw enroll body.
+      if (response && typeof response.json === 'function') return response;
       return jsonResponse(response);
     }
 
@@ -140,5 +147,13 @@ export const enrollHandlers = {
    */
   fail() {
     return {status: {purpose: 'ERROR', message: 'Not eligible.'}};
+  },
+
+  /**
+   * Simulates edge throttling: an HTTP 429 with an empty body.
+   * @return {!Object} A Response-like HTTP error (passed through as-is).
+   */
+  throttled() {
+    return jsonResponse({}, false, 429);
   },
 };
