@@ -7,7 +7,9 @@
 Amex only lets you add an Offer to one card at a time, and adding it to one card
 often makes it vanish from the others. Amex Assistant reads every card's offers
 into one panel, fires your pick at all eligible cards together, then re-reads
-each card to tell you which ones **actually** got it.
+each card to tell you which ones **actually** got it. A second **Benefits** tab
+tracks every statement credit (dining, airline fee, CLEAR…) across all your
+cards — how much you've used, what's expiring, and what's left to activate.
 
 <br>
 
@@ -22,7 +24,13 @@ each card to tell you which ones **actually** got it.
 
 <br>
 
-<img src="docs/panel.png" alt="The Amex Assistant panel: one offer selected across all eligible cards" width="410">
+<table align="center">
+<tr valign="top">
+<td width="33%"><img src="docs/panel.png" alt="Offers list across cards"><br><sub><b>Offers</b> — pick one, add it to every eligible card</sub></td>
+<td width="33%"><img src="docs/result.png" alt="Per-card verification result"><br><sub><b>Verify</b> — re-reads each card, reports what actually landed</sub></td>
+<td width="33%"><img src="docs/benefits.png" alt="Benefits dashboard"><br><sub><b>Benefits</b> — every statement credit, tracked across cards</sub></td>
+</tr>
+</table>
 
 </div>
 
@@ -44,6 +52,9 @@ each card to tell you which ones **actually** got it.
   on a throttle/interception signal (HTTP 429/403) the run stops early instead
   of pushing through — unsubmitted pairs are reported as `skipped` for a later
   retry.
+- **Benefits dashboard.** A second tab reads every card's statement credits and
+  aggregates them across cards — used vs. remaining, days left, a multi-card
+  breakdown per credit, and the ones you haven't activated yet.
 - **Private by construction.** `@grant none` means the script is *technically
   unable* to reach any third party — no backend, no telemetry, no IP collection.
 - **Zero build.** The userscript is the whole artifact; the network layer is
