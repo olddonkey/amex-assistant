@@ -86,37 +86,36 @@ test('fetchAllBenefits drops spend-to-unlock and pass-based trackers',
       'only the usage dollar credit is kept');
   });
 
-test('buildBenefitIndex groups the same benefit across cards by sorBenefitId',
+test('buildBenefitIndex groups by name across products (different sorIds)',
   () => {
     const benefits = [
-      {sorBenefitId: 'DINING', benefitId: 'a', name: 'Dining Credit',
-        category: 'DINING', period: '月', periodEnd: '2026-07-31',
-        target: 10, spent: 3.55, remaining: 6.45, symbol: '$', token: 'G1',
-        family: 'Gold', digits: '3021'},
-      {sorBenefitId: 'DINING', benefitId: 'b', name: 'Dining Credit',
-        category: 'DINING', period: '月', periodEnd: '2026-07-31',
-        target: 10, spent: 10, remaining: 0, symbol: '$', token: 'G2',
-        family: 'Gold', digits: '7742'},
-      {sorBenefitId: 'SAKS', benefitId: 'c', name: 'Saks', category: 'SHOP',
-        period: '半年', periodEnd: '2026-07-11', target: 50, spent: 0,
-        remaining: 50, symbol: '$', token: 'P1', family: 'Platinum',
-        digits: '1005'},
+      // Same benefit, but a different sorBenefitId on each card product —
+      // grouping by name must still merge them into one multi-card row.
+      {sorBenefitId: 'DINING-PLAT', name: 'Dining Credit', category: '',
+        period: '月', periodEnd: '2026-07-31', target: 10, spent: 3.55,
+        symbol: '$', token: 'G1', family: 'Gold', digits: '3021'},
+      {sorBenefitId: 'DINING-BIZ', name: 'Dining Credit', category: '',
+        period: '月', periodEnd: '2026-07-31', target: 10, spent: 10,
+        symbol: '$', token: 'G2', family: 'Gold', digits: '7742'},
+      {sorBenefitId: 'SAKS', name: 'Saks', category: '', period: '半年',
+        periodEnd: '2026-07-11', target: 50, spent: 0, symbol: '$',
+        token: 'P1', family: 'Platinum', digits: '1005'},
     ];
 
     const groups = buildBenefitIndex(benefits, NOW);
 
     // Soonest expiry first: Saks (07-11) before Dining (07-31).
-    assert.deepEqual(groups.map((g) => g.key), ['SAKS', 'DINING']);
+    assert.deepEqual(groups.map((g) => g.name), ['Saks', 'Dining Credit']);
 
-    const dining = groups.find((g) => g.key === 'DINING');
-    assert.equal(dining.entries.length, 2);
+    const dining = groups.find((g) => g.name === 'Dining Credit');
+    assert.equal(dining.entries.length, 2); // merged despite different sorIds
     assert.equal(dining.multiCard, true);
     assert.equal(dining.spent, 13.55); // summed across both Gold cards
     assert.equal(dining.target, 20);
     assert.equal(dining.remaining, 6.45);
     assert.equal(dining.fullyUsed, false);
 
-    const saks = groups.find((g) => g.key === 'SAKS');
+    const saks = groups.find((g) => g.name === 'Saks');
     assert.equal(saks.multiCard, false);
     assert.equal(saks.daysLeft, 5); // 07-11 minus 07-06
   });

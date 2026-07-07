@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.14.0
+// @version      0.15.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -726,6 +726,18 @@
   }
 
   /**
+   * A stable grouping key for a benefit, derived from its display name. The
+   * same benefit has a different `sorBenefitId` on each card product, so
+   * grouping by (normalized) name is what merges e.g. the ChatGPT credit across
+   * a Platinum and a Business Gold into one row.
+   * @param {string} name Benefit display name.
+   * @return {string} Normalized key.
+   */
+  function benefitNameKey(name) {
+    return String(name || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  /**
    * Whether a tracker is a dollar credit we should show (and count in stats).
    * Excludes `category === "spend"` (spend-to-unlock milestones like Centurion
    * / Delta Sky Club, whose target is a huge spend goal, not a credit) and
@@ -860,20 +872,22 @@
       if (title) b.name = title;
     }
 
-    // Add not-yet-enrolled benefits (no tracker on any card) as "去激活" rows.
-    const tracked = new Set(benefits.map((b) => b.sorBenefitId));
+    // Add not-yet-enrolled benefits (no tracker on any card) as "去激活" rows,
+    // deduped by name so a benefit enrollable on several cards shows once.
+    const tracked = new Set(benefits.map((b) => benefitNameKey(b.name)));
     const added = new Set();
     for (const {card, catalog} of catalogs) {
       for (const slug of Object.keys(catalog)) {
         const c = catalog[slug];
         if (c.layoutType !== 'NOTENROLLED' || !c.isEnrollable) continue;
-        if (!c.sorBenefitId || tracked.has(c.sorBenefitId)) continue;
-        if (added.has(c.sorBenefitId)) continue;
+        if (!c.sorBenefitId) continue;
         const b = catalogBenefit(c, card);
         // Only surface dollar-credit perks (e.g. CLEAR $189), not status/link
         // benefits like "Link Your Resy Profile" that have no amount.
         if (b.target <= 0) continue;
-        added.add(c.sorBenefitId);
+        const nameKey = benefitNameKey(b.name);
+        if (tracked.has(nameKey) || added.has(nameKey)) continue;
+        added.add(nameKey);
         benefits.push(b);
       }
     }
@@ -906,8 +920,8 @@
   }
 
   /**
-   * Groups card-tagged benefits across cards by `sorBenefitId` (the stable
-   * cross-card id) and sorts by soonest expiry first.
+   * Groups card-tagged benefits across cards by normalized name (so the same
+   * benefit on different card products merges) and sorts soonest-expiry first.
    * @param {!Array<!Object>} benefits Card-tagged benefits.
    * @param {number=} now Epoch ms treated as "today".
    * @return {!Array<!Object>} Grouped benefits, soonest-to-expire first.
@@ -915,7 +929,8 @@
   function buildBenefitIndex(benefits, now = Date.now()) {
     const byKey = new Map();
     for (const b of benefits) {
-      const key = b.sorBenefitId || `${b.token}:${b.benefitId}`;
+      const key = benefitNameKey(b.name) ||
+          b.sorBenefitId || `${b.token}:${b.benefitId}`;
       let group = byKey.get(key);
       if (!group) {
         group = {key, name: b.name, category: b.category, period: b.period,
@@ -1302,6 +1317,8 @@
   let launcherButton = null;
   /** Whether the offer snapshot has been loaded at least once. */
   let loaded = false;
+  /** The view key of the last render, to preserve scroll across rebuilds. */
+  let lastViewKey = '';
 
   /**
    * Tiny DOM builder. `props`: `class`/`style`/`text` plus `on*` handlers and
@@ -1349,6 +1366,16 @@
     const words = String(name).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/);
     const letters = words.slice(0, 2).map((w) => w[0] || '').join('');
     return (letters || String(name).slice(0, 2)).toUpperCase();
+  }
+
+  /**
+   * Initials for a benefit square, ignoring a leading "$300" so the letters
+   * come from the name ("$300 Digital Entertainment" → "DE", not "3D").
+   * @param {string} name Benefit name.
+   * @return {string} Letter initials.
+   */
+  function benefitInitials(name) {
+    return merchantInitials(String(name).replace(/^\s*\$[\d,]+\s*/, ''));
   }
 
   /** @param {!OfferGroup} g Offer group. @return {string} Short expiry, e.g. */
@@ -1944,18 +1971,26 @@
   /** Rebuilds the whole panel for the current `state.view`. */
   function render() {
     if (!panelRoot) return;
-    const root = panelRoot;
-    root.getElementById('shell').textContent = '';
-    const shell = root.getElementById('shell');
+    const shell = panelRoot.getElementById('shell');
+    // Preserve the scroll position across a same-view rebuild (e.g. expanding a
+    // row or toggling a filter), so the list doesn't jump back to the top.
+    const viewKey = state.tab === 'benefits' ? 'benefits' : state.view;
+    const oldBody = shell.querySelector('.body');
+    const keepScroll =
+        oldBody && viewKey === lastViewKey ? oldBody.scrollTop : 0;
+    lastViewKey = viewKey;
+    shell.textContent = '';
     if (state.tab === 'benefits') {
       renderBenefitsTab(shell);
-      return;
+    } else {
+      const views = {list: renderListView, loading: renderLoadingView,
+        running: renderRunningView, result: renderResultView,
+        empty: renderEmptyView, error: renderErrorView,
+        confirm: renderConfirmView};
+      (views[state.view] || renderListView)(shell);
     }
-    const views = {list: renderListView, loading: renderLoadingView,
-      running: renderRunningView, result: renderResultView,
-      empty: renderEmptyView, error: renderErrorView,
-      confirm: renderConfirmView};
-    (views[state.view] || renderListView)(shell);
+    const newBody = shell.querySelector('.body');
+    if (newBody && keepScroll) newBody.scrollTop = keepScroll;
   }
 
   /**
@@ -2321,7 +2356,7 @@
     const [bg, fg] = logoColors(group.name);
     const logo = el('div', {class: 'blogo',
       style: `background:${bg};color:${fg}`,
-      text: merchantInitials(group.name)});
+      text: benefitInitials(group.name)});
     const title = el('div', {class: 'btitle'},
       el('span', {class: 'bname', text: group.name}));
     if (group.period) {
@@ -2350,11 +2385,10 @@
       return el('div', {class: 'brow'}, logo, mn, rt, btn);
     }
 
+    // Inline aggregate progress bar on every credit row (single and multi).
     const pct = group.target > 0 ?
       Math.min(100, Math.round(group.spent / group.target * 100)) : 0;
-    if (!group.multiCard) {
-      mn.append(el('div', {class: 'bbar'}, el('div', {style: `width:${pct}%`})));
-    }
+    mn.append(el('div', {class: 'bbar'}, el('div', {style: `width:${pct}%`})));
 
     const urgent = Number.isFinite(group.daysLeft) && group.daysLeft <= 7;
     const rt = el('div', {class: 'brt'},
@@ -2365,14 +2399,11 @@
       el('div', {class: urgent ? 'bdays urgent' : 'bdays',
         text: daysLabel(group.daysLeft)}));
 
-    const row = el('div', {class: 'brow'}, logo, mn, rt);
+    // Every credit row is expandable (consistency) — reveals the per-card
+    // breakdown with card-art thumbnails.
     const expanded = state.benefitsExpanded.has(group.key);
-    if (group.multiCard) {
-      row.append(el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
-    }
-
-    if (!group.multiCard) return row;
-
+    const row = el('div', {class: 'brow'}, logo, mn, rt,
+      el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
     const wrap = el('div', {class: expanded ? 'bgrp exp' : 'bgrp'});
     row.onclick = () => {
       if (expanded) state.benefitsExpanded.delete(group.key);
@@ -2385,16 +2416,17 @@
   }
 
   /**
-   * @param {!Object} group A multi-card benefit group.
-   * @return {!Element} Per-card breakdown rows.
+   * @param {!Object} group A benefit group.
+   * @return {!Element} Per-card breakdown rows (card-art thumbnail + progress).
    */
   function renderBenefitBreakdown(group) {
     const box = el('div', {class: 'bsub'});
     for (const e of group.entries) {
       const pct = e.target > 0 ?
         Math.min(100, Math.round(e.spent / e.target * 100)) : 0;
-      const sw = el('span', {class: 'sw', style: `background:${swatchStyle(
-        e.token)}`});
+      const sw = el('span', {class: 'sw'});
+      if (e.art) sw.append(el('img', {src: e.art, alt: ''}));
+      else sw.style.background = swatchStyle(e.token);
       box.append(el('div', {class: 'bsubrow'}, sw,
         el('span', {class: 'bsubcard', text: `…${e.digits}`}),
         el('div', {class: 'bbar grow'}, el('div', {style: `width:${pct}%`})),
