@@ -1260,6 +1260,7 @@
       flex-direction: column; overflow: hidden;
       box-shadow: 0 8px 30px rgba(0,23,90,.18);
     }
+    .p.wide { width: 420px; }
     .hd {
       display: flex; flex-direction: column; background: #fff;
       border-bottom: 2px solid var(--blue); flex: none;
@@ -1471,6 +1472,12 @@
     .bdays { font-size: 10.5px; color: var(--fog); margin-top: 2px; }
     .bdays.urgent { font-weight: 700; color: var(--red); }
     .bcaret { font-size: 10px; color: var(--blue); flex: none; }
+    .binact { font-size: 11px; font-weight: 700; color: var(--amber); }
+    .bwhen { font-size: 10.5px; color: var(--fog); margin-top: 2px;
+      font-variant-numeric: tabular-nums; }
+    .bactivate { border: 1px solid #D5D7DB; border-radius: 4px;
+      padding: 5px 10px; font-size: 11px; font-weight: 600; color: var(--blue);
+      cursor: pointer; white-space: nowrap; flex: none; }
     .bgrp { border-bottom: 1px solid var(--line2); }
     .bgrp.exp { box-shadow: inset 2px 0 0 var(--blue); background: #FBFDFF; }
     .bgrp > .brow { border-bottom: none; }
@@ -1794,6 +1801,8 @@
     const root = panelRoot;
     root.getElementById('shell').textContent = '';
     const shell = root.getElementById('shell');
+    // The benefits view is designed 20px wider than the offers view.
+    shell.classList.toggle('wide', state.tab === 'benefits');
     if (state.tab === 'benefits') {
       renderBenefitsTab(shell);
       return;
@@ -2006,6 +2015,18 @@
     return `还剩 ${d} 天`;
   }
 
+  /**
+   * Whether a benefit is available but not yet activated (e.g. CLEAR Plus),
+   * so it shows a "去激活" prompt instead of a progress bar. Best-effort on the
+   * tracker `status`; unknown/active statuses fall through to a normal row.
+   * @param {!Object} group A benefit group.
+   * @return {boolean} True when the benefit needs activation.
+   */
+  function isInactiveBenefit(group) {
+    return /AVAILABLE|INACTIVE|NOT[_ ]?ENROLLED|ELIGIBLE[_ ]?TO/i
+      .test(group.status || '');
+  }
+
   /** @param {!Object} extra Header overrides. @return {!Object} Header opts. */
   function benefitsHeaderOpts(extra) {
     const owned = state.cards.filter(
@@ -2170,6 +2191,19 @@
       .map((e) => `${e.family} …${e.digits}`).join(' · ');
     const mn = el('div', {class: 'bmn'}, title,
       el('div', {class: 'bcard', text: cardText}));
+
+    // Not-yet-activated benefit (e.g. CLEAR Plus): no progress, a "去激活" CTA.
+    if (isInactiveBenefit(group)) {
+      const rt = el('div', {class: 'brt'},
+        el('div', {class: 'binact', text: '未激活'}),
+        el('div', {class: 'bwhen',
+          text: `${fmtMoney(group.target, group.symbol)} / ` +
+            `${group.period || '年'}`}));
+      const btn = el('div', {class: 'bactivate', text: '去激活 ↗',
+        onclick: () => window.open(
+          'https://global.americanexpress.com/', '_blank')});
+      return el('div', {class: 'brow'}, logo, mn, rt, btn);
+    }
 
     const pct = group.target > 0 ?
       Math.min(100, Math.round(group.spent / group.target * 100)) : 0;
