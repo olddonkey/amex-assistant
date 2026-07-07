@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.15.0
+// @version      0.15.1
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -98,6 +98,9 @@
 
   /** Locale sent with every offers request. */
   const LOCALE = 'en-US';
+
+  /** Max cards read from Amex at once, to stay gentle on big accounts. */
+  const MAX_CONCURRENT_READS = 4;
 
   /** Only these offer types are shown; matches the web app's default filter. */
   const OFFER_TYPE = 'MERCHANT';
@@ -552,6 +555,29 @@
   }
 
   /**
+   * Maps `fn` over `items` with at most `limit` running concurrently,
+   * preserving input order. Caps how many cards we read from Amex at once.
+   * @param {!Array<T>} items Items to map.
+   * @param {number} limit Max concurrent invocations.
+   * @param {function(T, number): !Promise<R>} fn Async mapper.
+   * @return {!Promise<!Array<R>>} Results in input order.
+   * @template T, R
+   */
+  async function mapLimit(items, limit, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await fn(items[i], i);
+      }
+    };
+    const count = Math.max(1, Math.min(limit, items.length));
+    await Promise.all(Array.from({length: count}, () => worker()));
+    return results;
+  }
+
+  /**
    * Reads all cards and their eligible offers plus already-added group keys.
    *
    * The account list is fetched first so the real card count is known before
@@ -567,15 +593,14 @@
       .filter((account) => account.account_token);
     const total = accounts.length;
     onProgress(0, total);
-    // Read every card in parallel (eligible + enrolled together); the old
-    // serial per-card loop made an 8-card account slow to load.
+    // Read cards concurrently but capped (was fully serial, i.e. slow on an
+    // 8-card account). Reads within a card stay sequential, so at most
+    // MAX_CONCURRENT_READS requests are in flight.
     let done = 0;
-    return Promise.all(accounts.map(async (account) => {
+    return mapLimit(accounts, MAX_CONCURRENT_READS, async (account) => {
       const token = account.account_token;
-      const [eligible, enrolled] = await Promise.all([
-        fetchEligibleOffers(token),
-        fetchEnrolledOffers(token),
-      ]);
+      const eligible = await fetchEligibleOffers(token);
+      const enrolled = await fetchEnrolledOffers(token);
       const enrolledKeys =
           new Set(enrolled.map(offerGroupKey).filter(Boolean));
       onProgress(++done, total);
@@ -592,7 +617,7 @@
         enrolled,
         enrolledKeys,
       };
-    }));
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -837,17 +862,16 @@
     const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
     const total = owned.length;
     onProgress(0, total);
-    // Read every card in parallel (trackers + catalog together); the old
-    // per-card serial loop was the main source of the slow load.
+    // Read cards concurrently but capped; reads within a card stay sequential,
+    // so at most MAX_CONCURRENT_READS requests are in flight at once.
     let done = 0;
-    const perCard = await Promise.all(owned.map(async (card) => {
-      const [trackers, catalog] = await Promise.all([
-        fetchAccountBenefits(card.token),
-        fetchCardCatalog(card.token),
-      ]);
-      onProgress(++done, total);
-      return {card, trackers, catalog};
-    }));
+    const perCard = await mapLimit(owned, MAX_CONCURRENT_READS,
+      async (card) => {
+        const trackers = await fetchAccountBenefits(card.token);
+        const catalog = await fetchCardCatalog(card.token);
+        onProgress(++done, total);
+        return {card, trackers, catalog};
+      });
     const catalogs = perCard.map(({card, catalog}) => ({card, catalog}));
     const benefits = [];
     for (const {card, trackers} of perCard) {
@@ -1239,6 +1263,7 @@
     fetchEnrolledKeys,
     enrollOffer,
     isEnrollSuccess,
+    mapLimit,
     snapshot,
     executeSelected,
     planRetry,

@@ -9,7 +9,9 @@ import {afterEach, test} from 'node:test';
 import api from '../src/amex-assistant.user.js';
 import {createMockFetch, makeOffer} from './mock-fetch.mjs';
 
-const {fetchAccounts, fetchEligibleOffers, snapshot, buildOfferIndex} = api;
+const {
+  fetchAccounts, fetchEligibleOffers, snapshot, buildOfferIndex, mapLimit,
+} = api;
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -20,6 +22,21 @@ afterEach(() => {
 function useScenario(scenario) {
   globalThis.fetch = createMockFetch(scenario);
 }
+
+test('mapLimit caps concurrency and preserves order', async () => {
+  let active = 0;
+  let peak = 0;
+  const fn = async (x) => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active--;
+    return x * 2;
+  };
+  const out = await mapLimit([1, 2, 3, 4, 5, 6, 7, 8], 3, fn);
+  assert.deepEqual(out, [2, 4, 6, 8, 10, 12, 14, 16], 'order preserved');
+  assert.ok(peak <= 3, `never more than 3 at once (peak was ${peak})`);
+});
 
 test('fetchAccounts returns the accounts array', async () => {
   useScenario({accounts: [{account_token: 'A'}, {account_token: 'B'}]});
