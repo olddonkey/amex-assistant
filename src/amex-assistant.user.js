@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.15.1
+// @version      0.16.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -1333,6 +1333,7 @@
     benefitsExpanded: new Set(),
     benefitUnusedOnly: true,
     benefitDoneOpen: false,
+    benefitQuery: '',
   };
 
   /** Panel host + shadow root, created lazily and reused across opens. */
@@ -2285,11 +2286,32 @@
     shell.append(body);
   }
 
+  /**
+   * @param {!Object} group A benefit group.
+   * @param {string} q Lowercased search query.
+   * @return {boolean} Whether the benefit matches by name or card.
+   */
+  function matchesBenefitQuery(group, q) {
+    if (!q) return true;
+    if (group.name.toLowerCase().includes(q)) return true;
+    return group.entries.some(
+      (e) => `${e.family} …${e.digits}`.toLowerCase().includes(q));
+  }
+
   /** @param {!Element} shell Panel content root. */
   function renderBenefitsList(shell) {
     shell.append(renderHeader(benefitsHeaderOpts({
       refresh: true, onRefresh: () => loadBenefits(true)})));
     const body = el('div', {class: 'body'});
+
+    const search = el('input', {type: 'search', value: state.benefitQuery,
+      placeholder: '搜索 benefit 或卡'});
+    search.oninput = (e) => {
+      state.benefitQuery = e.target.value;
+      renderBenefitBody(body);
+    };
+    body.append(el('div', {class: 'sr'}, search));
+
     body.append(renderBenefitStats());
 
     const tb = el('div', {class: 'btb'});
@@ -2300,30 +2322,48 @@
     un.checked = state.benefitUnusedOnly;
     un.onchange = () => {
       state.benefitUnusedOnly = un.checked;
-      render();
+      renderBenefitBody(body);
     };
     tb.append(el('label', {class: 'unused'}, un, '只看未用完'));
     body.append(tb);
 
-    const active = state.benefits.filter((g) => !g.fullyUsed);
-    const used = state.benefits.filter((g) => g.fullyUsed);
-    const shown = state.benefitUnusedOnly ? active : state.benefits;
-    const list = el('div', {class: 'blist'});
-    for (const g of shown) list.append(renderBenefitRow(g));
-    if (shown.length === 0) {
-      list.append(el('div', {class: 'msg', style: 'padding:24px'},
-        el('div', {class: 'note', text: '这些卡上没有可追踪的 benefit'})));
-    }
-    body.append(list);
-
-    if (state.benefitUnusedOnly && used.length) {
-      body.append(renderBenefitDoneSection(used));
-    }
-
+    body.append(el('div', {id: 'bbody'}));
     shell.append(body);
+    renderBenefitBody(body);
+
     shell.append(el('div', {class: 'bfoot'},
       el('div', {class: 'note',
         text: '进度来自 Amex 的额度追踪 · 纯只读，不在本地存任何数据'})));
+  }
+
+  /**
+   * Renders the filtered benefit list into `#bbody` (without touching the
+   * search box / stats / toolbar), so typing in search keeps focus.
+   * @param {!Element} body The benefits body element.
+   */
+  function renderBenefitBody(body) {
+    const bbody = body.querySelector('#bbody');
+    if (!bbody) return;
+    bbody.textContent = '';
+    const q = state.benefitQuery.trim().toLowerCase();
+    const match = (g) => matchesBenefitQuery(g, q);
+    const active = state.benefits.filter((g) => !g.fullyUsed && match(g));
+    const used = state.benefits.filter((g) => g.fullyUsed && match(g));
+    const shown = state.benefitUnusedOnly ? active :
+      state.benefits.filter(match);
+    const list = el('div', {class: 'blist'});
+    for (const g of shown) list.append(renderBenefitRow(g));
+    if (shown.length === 0) {
+      const text = q ? `没有匹配「${state.benefitQuery.trim()}」的 benefit` :
+        '这些卡上没有可追踪的 benefit';
+      list.append(el('div', {class: 'msg', style: 'padding:24px'},
+        el('div', {class: 'note', text})));
+    }
+    bbody.append(list);
+
+    if (state.benefitUnusedOnly && used.length) {
+      bbody.append(renderBenefitDoneSection(used));
+    }
   }
 
   /** @return {!Element} The three-stat header bar. */
