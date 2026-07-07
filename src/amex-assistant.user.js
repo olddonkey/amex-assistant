@@ -1810,7 +1810,7 @@
     const rt = el('div', {class: 'rt'});
     if (fullyAdded) {
       rt.append(el('div', {class: 'done-tag',
-        text: `已加全部 ${group.cards.length} 卡`}));
+        text: `已添加到 ${group.cards.length} 张卡`}));
     } else {
       const badge = el('div', {class: 'bd'});
       if (addedCount) {
@@ -2059,9 +2059,9 @@
   function agoLabel(ts) {
     if (!ts) return '';
     const mins = Math.floor((Date.now() - ts) / 60000);
-    if (mins < 1) return '刚刚读取';
-    if (mins < 60) return `${mins} 分钟前读取`;
-    return `${Math.floor(mins / 60)} 小时前读取`;
+    if (mins < 1) return '刚刚更新';
+    if (mins < 60) return `${mins} 分钟前更新`;
+    return `${Math.floor(mins / 60)} 小时前更新`;
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -2111,7 +2111,7 @@
     tb.append(el('label', {}, multi, '只看多卡可加'),
       el('div', {class: 'sp'}),
       el('div', {class: 'ac'},
-        el('a', {class: 'a-blue', text: '全选可加',
+        el('a', {class: 'a-blue', text: '全选当前可加',
           onclick: () => selectAllVisible(body)}),
         el('a', {class: 'a-mut', text: '清空',
           onclick: () => clearSelection(body)})));
@@ -2131,7 +2131,7 @@
   function renderLastRunStrip() {
     const r = state.lastRun;
     const strip = el('div', {class: 'lastrun'});
-    strip.append(document.createTextNode('上次执行：'));
+    strip.append(document.createTextNode('上次添加：'));
     strip.append(el('b', {class: 'g', text: `${r.confirmed} 确认已加`}));
     strip.append(document.createTextNode(' · '));
     strip.append(el('b', {class: 'r', text: `${r.failed} 失败`}));
@@ -2194,9 +2194,9 @@
     sm.textContent = '';
     sm.append(document.createTextNode('已选 '),
       el('b', {text: String(offers)}),
-      document.createTextNode(' 个 offer，将提交 '),
+      document.createTextNode(' 个 offer，将尝试添加到 '),
       el('b', {text: String(pairs)}),
-      document.createTextNode(' 次 Add to Card'));
+      document.createTextNode(' 张卡'));
     go.disabled = pairs === 0;
   }
 
@@ -2236,7 +2236,7 @@
   function benefitsHeaderOpts(extra) {
     const owned = state.cards.filter(
       (c) => (c.relationship || 'BASIC') === 'BASIC').length;
-    const parts = [`${owned} Cards`];
+    const parts = [`${owned} 张主卡`];
     const ago = agoLabel(state.benefitsReadAt);
     if (ago) parts.push(ago);
     return {glyph: '＋', title: 'Amex 助手', subtitle: parts.join(' · '),
@@ -2267,7 +2267,7 @@
           '正在读取卡列表…'})));
     body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
       el('div', {style: `width:${pct}%`})));
-    body.append(el('div', {class: 'note', text: '纯只读，不会改动账户'}));
+    body.append(el('div', {class: 'note', text: '只读查看，不会改动账户'}));
     shell.append(body);
   }
 
@@ -2315,7 +2315,7 @@
     body.append(renderBenefitStats());
 
     const tb = el('div', {class: 'btb'});
-    tb.append(el('div', {class: 'sortlbl'}, '按到期排序 ',
+    tb.append(el('div', {class: 'sortlbl'}, '按到期时间排序 ',
       el('span', {class: 'caret', text: '▾'})));
     tb.append(el('div', {class: 'sp'}));
     const un = el('input', {type: 'checkbox'});
@@ -2324,7 +2324,7 @@
       state.benefitUnusedOnly = un.checked;
       renderBenefitBody(body);
     };
-    tb.append(el('label', {class: 'unused'}, un, '只看未用完'));
+    tb.append(el('label', {class: 'unused'}, un, '只看还有余额的'));
     body.append(tb);
 
     body.append(el('div', {id: 'bbody'}));
@@ -2333,7 +2333,7 @@
 
     shell.append(el('div', {class: 'bfoot'},
       el('div', {class: 'note',
-        text: '进度来自 Amex 的额度追踪 · 纯只读，不在本地存任何数据'})));
+        text: '金额来自 Amex 的 benefit 进度 · 只读查看，不在本地保存数据'})));
   }
 
   /**
@@ -2379,13 +2379,13 @@
     };
     const feeCol = s.annualFee > 0 ?
       col('r', `${s.paybackPct}%`, 'ink',
-        `年费回本 ${fmtMoney(s.redeemedYtd)}/${fmtMoney(s.annualFee)}`,
+        `已抵年费 ${fmtMoney(s.redeemedYtd)}/${fmtMoney(s.annualFee)}`,
         '仅含可自动追踪的项目') :
-      col('r', fmtMoney(s.redeemedYtd), 'ink', '今年已用回', '按可追踪项目');
+      col('r', fmtMoney(s.redeemedYtd), 'ink', '今年已抵扣', '按可追踪项目');
     return el('div', {class: 'bstats'},
-      col('l', fmtMoney(s.thisMonthUnused), 'navy', '本月还没用的'),
+      col('l', fmtMoney(s.thisMonthUnused), 'navy', '本月剩余额度'),
       el('div', {class: 'vsep'}),
-      col('m', fmtMoney(s.redeemedYtd), 'green', '今年已用回'),
+      col('m', fmtMoney(s.redeemedYtd), 'green', '今年已抵扣'),
       el('div', {class: 'vsep'}),
       feeCol);
   }
@@ -2397,7 +2397,7 @@
   function renderBenefitDoneSection(used) {
     const wrap = el('div', {class: 'bdone'});
     const head = el('div', {class: 'bsec'});
-    head.append(el('span', {class: 'bsec-t', text: '已用完 · 本周期'}));
+    head.append(el('span', {class: 'bsec-t', text: '本周期已用完'}));
     head.append(el('span', {class: 'bsec-n', text: String(used.length)}));
     head.append(el('div', {class: 'sp'}));
     head.append(el('span', {class: 'caret',
@@ -2439,11 +2439,11 @@
     // Not-yet-activated benefit (e.g. CLEAR Plus): no progress, a "去激活" CTA.
     if (isInactiveBenefit(group)) {
       const rt = el('div', {class: 'brt'},
-        el('div', {class: 'binact', text: '未激活'}),
+        el('div', {class: 'binact', text: '待开启'}),
         el('div', {class: 'bwhen',
           text: `${fmtMoney(group.target, group.symbol)} / ` +
             `${group.period || '年'}`}));
-      const btn = el('div', {class: 'bactivate', text: '去激活 ↗',
+      const btn = el('div', {class: 'bactivate', text: '去开启 ↗',
         onclick: () => window.open(
           'https://global.americanexpress.com/card-benefits/view-all',
           '_blank')});
@@ -2537,8 +2537,8 @@
     const pending = run.total - seen;
     const pct = run.total ? Math.round(seen / run.total * 100) : 0;
     shell.append(renderHeader({glyph: el('span', {class: 'spin'}),
-      title: '正在加到卡上…',
-      subtitle: `${run.total} 次 Add to Card 已提交`,
+      title: '正在添加到卡上…',
+      subtitle: `已提交 ${run.total} 个添加请求`,
       right: el('div', {class: 'b', style: 'font-size:12px;font-weight:700',
         text: `已处理 ${run.results.length} / ${run.total}`})}));
     const body = el('div', {class: 'body'});
@@ -2576,7 +2576,7 @@
     const footStyle = 'border-top:1px solid #E7E8EA;padding:11px 18px';
     body.append(el('div', {style: footStyle},
       el('div', {class: 'note',
-        text: '提交完成后，会重新读取已加列表，确认哪些卡真的加上'})));
+        text: '提交完成后会重新读取已加列表，逐张卡核对结果'})));
     shell.append(body);
     void settledIds;
   }
@@ -2588,8 +2588,8 @@
     const throttled = results.some(
       (r) => r.blocked || r.state === ResultState.SKIPPED);
     shell.append(renderHeader({glyph: throttled ? '!' : '✓',
-      title: throttled ? '本轮已提前中止' : '完成，已核对',
-      subtitle: `${results.length} 次 Add to Card 已处理`, close: true,
+      title: throttled ? '已停止本轮添加' : '添加完成，已核对',
+      subtitle: `已处理 ${results.length} 个添加请求`, close: true,
       err: throttled}));
     const body = el('div', {class: 'body'});
     const cols = [
@@ -2604,15 +2604,14 @@
     if (throttled) {
       body.append(el('div', {class: 'info'},
         el('b', {text: '检测到限流或拦截。'}),
-        '收到 429/403 或异常响应后，本轮剩余提交已中止，也未做复查核对，' +
-          '避免继续触发风控。建议等几分钟再点「重试未完成项」，' +
-          '不要立即反复重发。'));
+        '收到 429/403 或异常响应后，剩余请求已经停止，也没有继续复查。' +
+          '建议等几分钟再点「重试未完成项」，不要马上反复提交。'));
     }
     body.append(el('div', {class: 'info'},
       el('b', {text: '什么是疑似去重？'}),
-      'Amex 返回 SUCCESS，但重新读取已加列表后没在这张卡看到这个 ' +
-        'offer，就会归到这里。常见原因是同一个 offer 可能只允许加到' +
-        '一张卡；「无法确认」表示复查未能完成。'));
+      'Amex 接口说添加成功，但重新读取已加列表时，这张卡上没有看到该 offer，' +
+        '就会归到这里。常见原因是同一个 offer 可能只能加到一张卡；' +
+        '「无法确认」表示复查没有读完。'));
 
     const section = (title, filter, glyph, cls) => {
       const items = results.filter(filter);
@@ -2634,7 +2633,7 @@
     section('添加失败', (r) => r.state === ResultState.FAILED, '✗', 'r');
     section('未提交 — 检测到限流后中止',
       (r) => r.state === ResultState.SKIPPED, '⊘', 'am');
-    section('疑似去重 — SUCCESS 但复查未出现在已加列表',
+    section('疑似去重 — 接口成功，但复查没看到',
       (r) => r.state === ResultState.GHOST, '⚠', 'am');
     section('无法确认 — 复查未完成',
       (r) => r.state === ResultState.UNVERIFIED, '?', 'note');
@@ -2693,11 +2692,11 @@
 
     const dlg = el('div', {class: 'cfdlg'});
     dlg.append(el('div', {class: 'cf-t',
-      text: `同时提交 ${tasks.length} 个添加？`}));
+      text: `确认添加到 ${tasks.length} 张卡？`}));
     dlg.append(el('div', {class: 'cf-d'},
-      `已选 ${byOffer.size} 个 offer，共 ${tasks.length} 个 offer×卡，会`,
-      el('b', {text: '一次性同时提交'}),
-      '，提交后不可撤销。完成后会重新读取已加列表，逐卡确认。'));
+      `已选 ${byOffer.size} 个 offer，共 ${tasks.length} 张卡。系统会`,
+      el('b', {text: '一次性提交这些请求'}),
+      '；提交后不能撤销。完成后会重新读取已加列表，逐张卡核对。'));
     const sum = el('div', {class: 'cf-sum'});
     for (const [name, n] of byOffer) {
       sum.append(el('div', {text: `${name} → ${n} 张卡`}));
