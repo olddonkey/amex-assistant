@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.19.2
+// @version      0.20.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -148,6 +148,8 @@
   const RequestType = {
     ELIGIBLE: 'OFFERSHUB_LANDING',
     ENROLLED: 'ADDEDTOCARD_LANDING',
+    /** Offers with posted savings (the hub's "redeemed" list). */
+    REDEEMED: 'SAVINGS_LANDING',
   };
 
   /**
@@ -291,6 +293,23 @@
       activate: '去开启 ↗',
       expired: '已过期',
       daysLeft: '还剩 {n} 天',
+      // Added (redeem-tracking) sub-view
+      subAddable: '可加',
+      subAdded: '已加',
+      sortShortExpiry: '按到期',
+      statRedeemed: '已返现',
+      statPending: '待消费',
+      statExpiring: '7 天内过期',
+      redeemedOfCards: '{x} / {y} 卡已返现',
+      totalRedeemed: '共返 {amt}',
+      noCashbackSeen: '未见返现',
+      cashbackPosted: '✓ 已返现',
+      pointsAmount: '{n} 点',
+      noAddedOffers: '还没有已加的 offer',
+      addedLoading: '正在读取返现记录…',
+      addedError: '返现记录读取失败。',
+      addedFootnote:
+          '消费状态按返现入账记录归类，入账通常延迟 1–5 天 · 以 Amex 为准',
       period_month: '月',
       period_quarter: '季',
       period_half: '半年',
@@ -418,6 +437,23 @@
       activate: 'Activate ↗',
       expired: 'Expired',
       daysLeft: '{n} days left',
+      // Added (redeem-tracking) sub-view
+      subAddable: 'Addable',
+      subAdded: 'Added',
+      sortShortExpiry: 'By expiry',
+      statRedeemed: 'Cashback posted',
+      statPending: 'To spend',
+      statExpiring: 'Expiring in 7 days',
+      redeemedOfCards: '{x} / {y} cards posted',
+      totalRedeemed: '{amt} total back',
+      noCashbackSeen: 'No cashback yet',
+      cashbackPosted: '✓ Posted',
+      pointsAmount: '{n} pts',
+      noAddedOffers: 'No added offers yet',
+      addedLoading: 'Reading cashback records…',
+      addedError: 'Could not read cashback records.',
+      addedFootnote: 'Spend status comes from posted cashback records, ' +
+          'which usually lag 1–5 days · Amex is authoritative',
       period_month: 'mo',
       period_quarter: 'qtr',
       period_half: '6 mo',
@@ -1357,6 +1393,252 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Redeem tracking (the "added" sub-view): group the added offers across
+  // cards and mark each (offer, card) pair by whether a cashback posting
+  // exists for it. Honest framing throughout: we only see posting records —
+  // a pair is "no cashback seen", never "not spent" (postings lag spend by
+  // days, and some offers credit in other ways).
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fetches the offers with posted savings for a card. Retries once on a
+   * transient error. Tolerates both the paginated (`page1`) and flat-array
+   * shapes of the savings list.
+   * @param {string} token The card's `account_token`.
+   * @param {function(): !Promise<void>=} retryDelay Pause between read tries.
+   * @return {!Promise<!Array<!Object>>} Raw redeemed offers.
+   */
+  async function fetchRedeemedOffers(token, retryDelay = randomRetryDelay) {
+    const data = await retryTransient(
+      () => readOffersHub(token, RequestType.REDEEMED), retryDelay);
+    const node =
+        getPath(data, 'offersSavingsViewAll.savingsOffers.offersList');
+    if (Array.isArray(node)) return node;
+    const page = getPath(node, 'page1');
+    return Array.isArray(page) ? page : [];
+  }
+
+  /** Candidate paths that may hold a redemption's credited amount. */
+  const REDEEM_AMOUNT_PATHS = ['savingsAmount', 'creditAmount', 'savedAmount',
+    'statementCreditAmount', 'amount', 'savings.amount'];
+
+  /** Candidate paths that may hold a redemption's posting date. */
+  const REDEEM_DATE_PATHS = ['redemptionDate', 'creditDate', 'postedDate',
+    'transactionDate', 'savings.date', 'date'];
+
+  /** Candidate paths whose presence marks a points-based posting. */
+  const REDEEM_POINTS_PATHS = ['points', 'pointsEarned', 'rewardPoints',
+    'membershipRewardsPoints', 'totalPoints'];
+
+  /**
+   * Whether a raw redeemed offer credits points/miles rather than dollars
+   * (e.g. "Earn +1 Membership Rewards point per eligible dollar"). Points
+   * values must never be summed as money. Checks points-ish fields first,
+   * then the offer's own wording.
+   * @param {!Object} offer Raw redeemed offer.
+   * @return {boolean} True for a points/miles posting.
+   */
+  function isPointsRedemption(offer) {
+    for (const path of REDEEM_POINTS_PATHS) {
+      const value = getPath(offer, path);
+      if (value == null || value === '') continue;
+      const n = parseFloat(String(value).replace(/[^0-9.]/g, ''));
+      if (Number.isFinite(n) && n > 0) return true;
+    }
+    const text = [offer.title, offer.name, offer.shortDescription,
+      getPath(offer, 'rewardType'), getPath(offer, 'offerRewardType'),
+      getPath(offer, 'rewardsType')].filter(Boolean).join(' ');
+    return /point|membership rewards|\bmiles\b/i.test(text);
+  }
+
+  /**
+   * Extracts the credited amount from a raw redeemed offer, tolerating both
+   * numeric and `"$12.50"`-style fields across the candidate paths.
+   * @param {!Object} offer Raw redeemed offer.
+   * @return {number} Credited amount, or 0 when unknown.
+   */
+  function redemptionAmount(offer) {
+    for (const path of REDEEM_AMOUNT_PATHS) {
+      const value = getPath(offer, path);
+      if (value == null || value === '') continue;
+      const n = typeof value === 'number' ? value :
+        parseFloat(String(value).replace(/[^0-9.]/g, ''));
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 0;
+  }
+
+  /**
+   * Extracts a redemption's posting date as `M/D`. Parses ISO and `M/D`
+   * shapes with regexes (never `Date.parse`, whose UTC midnight shifts the
+   * day in western timezones).
+   * @param {!Object} offer Raw redeemed offer.
+   * @return {string} `M/D`, or '' when unknown.
+   */
+  function redemptionDate(offer) {
+    for (const path of REDEEM_DATE_PATHS) {
+      const value = getPath(offer, path);
+      if (!value) continue;
+      const s = String(value);
+      let m = /(\d{4})-(\d{2})-(\d{2})/.exec(s);
+      if (m) return `${Number(m[2])}/${Number(m[3])}`;
+      m = /(\d{1,2})\/(\d{1,2})/.exec(s);
+      if (m) return `${Number(m[1])}/${Number(m[2])}`;
+    }
+    return '';
+  }
+
+  /**
+   * Days until an added offer expires, from whichever expiration field is
+   * present. Text like `7/9` without a year is assumed to be the upcoming
+   * occurrence (offers expire in the future).
+   * @param {!Object} offer Raw offer object.
+   * @param {number=} now Epoch ms treated as "today".
+   * @return {number} Whole days left (negative when past), or Infinity when
+   *     unparsable — unknown expiries sort last, they don't shout "urgent".
+   */
+  function offerExpiryDays(offer, now = Date.now()) {
+    // Calendar-day difference (expiring the day after tomorrow = 2), the
+    // colloquial reading of "N days left".
+    const nowDate = new Date(now);
+    const today = new Date(nowDate.getFullYear(), nowDate.getMonth(),
+      nowDate.getDate()).getTime();
+    const dayDiff = (end) => Math.round((end.getTime() - today) / 86400000);
+    const iso = String(getPath(offer, 'expiration.date') ||
+        offer.expirationDate || '');
+    let m = /(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+    if (m) return dayDiff(new Date(+m[1], +m[2] - 1, +m[3]));
+    m = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/
+      .exec(getPath(offer, 'expiration.text') || '');
+    if (!m) return Infinity;
+    let year = m[3] ? Number(m[3]) : nowDate.getFullYear();
+    if (year < 100) year += 2000;
+    let end = new Date(year, Number(m[1]) - 1, Number(m[2]));
+    if (!m[3] && dayDiff(end) < 0) {
+      end = new Date(year + 1, Number(m[1]) - 1, Number(m[2]));
+    }
+    return dayDiff(end);
+  }
+
+  /**
+   * Builds the "added" view's index: every offer present on any card's added
+   * list OR savings list, grouped across cards by {@link offerGroupKey}.
+   * Redeemed-only offers are included so a fully-redeemed offer still shows
+   * after Amex drops it from the added list. Each group's `cards[i]` carries
+   * that card's redemption record (null when no posting was seen). Groups
+   * sort by expiry urgency; fully-redeemed groups sink to the bottom.
+   *
+   * @param {!Array<!CardSnapshot>} cards Per-card snapshot (uses `enrolled`).
+   * @param {!Map<string, !Array<!Object>>=} redeemedByToken Raw redeemed
+   *     offers per card token; empty → everything shows as no-posting-seen.
+   * @param {number=} now Epoch ms treated as "today".
+   * @return {!Array<!Object>} Added-offer groups.
+   */
+  function buildAddedIndex(cards, redeemedByToken = new Map(),
+    now = Date.now()) {
+    const byKey = new Map();
+    const groupFor = (offer) => {
+      const key = offerGroupKey(offer);
+      if (!key) return null;
+      let g = byKey.get(key);
+      if (!g) {
+        g = {key, name: offer.title || offer.name || key,
+          description: offer.shortDescription || '',
+          image: offer.image || '',
+          expiry: getPath(offer, 'expiration.text') || '',
+          daysLeft: offerExpiryDays(offer, now),
+          cards: [], cardIndex: new Map()};
+        byKey.set(key, g);
+      } else {
+        // Later sightings (e.g. the savings copy) may carry fields the first
+        // one lacked.
+        if (!g.description && offer.shortDescription) {
+          g.description = offer.shortDescription;
+        }
+        if (!Number.isFinite(g.daysLeft)) {
+          g.daysLeft = offerExpiryDays(offer, now);
+        }
+      }
+      return g;
+    };
+    const entryFor = (g, token) => {
+      let e = g.cardIndex.get(token);
+      if (!e) {
+        e = {token, redeemed: null};
+        g.cardIndex.set(token, e);
+        g.cards.push(e);
+      }
+      return e;
+    };
+    for (const card of cards) {
+      const seen = new Set();
+      for (const offer of card.enrolled || []) {
+        const g = groupFor(offer);
+        if (!g || seen.has(g.key)) continue;
+        seen.add(g.key);
+        entryFor(g, card.token);
+      }
+      for (const offer of redeemedByToken.get(card.token) || []) {
+        const g = groupFor(offer);
+        if (!g) continue;
+        const e = entryFor(g, card.token);
+        if (!e.redeemed) {
+          e.redeemed = {amount: redemptionAmount(offer),
+            unit: isPointsRedemption(offer) ? 'points' : 'usd',
+            date: redemptionDate(offer)};
+        }
+      }
+    }
+    const groups = [...byKey.values()];
+    for (const g of groups) {
+      delete g.cardIndex;
+      g.redeemedCount = g.cards.filter((c) => c.redeemed).length;
+      const sum = (unit) => round2(g.cards.reduce((total, c) =>
+        total + (c.redeemed && c.redeemed.unit === unit ?
+          c.redeemed.amount : 0), 0));
+      // Dollars and points are separate ledgers — never added together.
+      g.totalRedeemedUsd = sum('usd');
+      g.totalRedeemedPoints = sum('points');
+      g.fullyRedeemed =
+          g.cards.length > 0 && g.redeemedCount === g.cards.length;
+    }
+    const order = (g) => Number.isFinite(g.daysLeft) ? g.daysLeft : 1e9;
+    return groups.sort((a, b) => {
+      if (a.fullyRedeemed !== b.fullyRedeemed) return a.fullyRedeemed ? 1 : -1;
+      return order(a) - order(b);
+    });
+  }
+
+  /**
+   * Header stats for the added view. `redeemedAmount` is dollars only —
+   * points postings are tallied separately and never converted to money.
+   * @param {!Array<!Object>} groups Added-offer groups.
+   * @return {{redeemedAmount: number, redeemedPoints: number,
+   *           pending: number, expiring: number}} Posted cashback dollars,
+   *     posted points, groups not yet fully redeemed, and how many of those
+   *     expire within 7 days.
+   */
+  function addedStats(groups) {
+    let redeemedAmount = 0;
+    let redeemedPoints = 0;
+    let pending = 0;
+    let expiring = 0;
+    for (const g of groups) {
+      redeemedAmount += g.totalRedeemedUsd;
+      redeemedPoints += g.totalRedeemedPoints;
+      if (!g.fullyRedeemed) {
+        pending++;
+        if (Number.isFinite(g.daysLeft) && g.daysLeft >= 0 &&
+            g.daysLeft <= 7) {
+          expiring++;
+        }
+      }
+    }
+    return {redeemedAmount: round2(redeemedAmount),
+      redeemedPoints: Math.round(redeemedPoints), pending, expiring};
+  }
+
   /**
    * Sleeps for a random duration within `[min, max]` ms.
    * @param {number} min Minimum delay.
@@ -1647,6 +1929,10 @@
     executeSelected,
     planRetry,
     resolveTasks,
+    fetchRedeemedOffers,
+    buildAddedIndex,
+    addedStats,
+    offerExpiryDays,
     fetchAccountBenefits,
     fetchCardCatalog,
     fetchAllBenefits,
@@ -1710,6 +1996,13 @@
     lastRun: null,
     // Which top-level tab is showing: 'offers' or 'benefits'.
     tab: 'offers',
+    // Offers sub-view: 'addable' (the enroll list) or 'added' (redeem
+    // tracking).
+    offersSub: 'addable',
+    // Redeemed (savings) records per card token, loaded lazily the first
+    // time the added sub-view opens; cleared on refresh.
+    redeemed: {byToken: new Map(), loaded: false, loading: false, error: '',
+      readAt: 0},
     // Benefits tab state (loaded lazily on first switch).
     benefits: [],
     benefitStats: null,
@@ -2176,6 +2469,28 @@
       border-radius: 9px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
     .bfoot { border-top: 1px solid var(--line); padding: 10px 18px;
       background: #fff; flex: none; }
+    /* Added (redeem-tracking) sub-view */
+    .sortmini { color: var(--sub); font-size: 11.5px; padding-bottom: 9px;
+      white-space: nowrap; }
+    .navy { color: var(--navy); }
+    .agrp { border-bottom: 1px solid var(--line2); background: #fff; }
+    .agrp.dim .arow, .agrp.dim .acards { opacity: .65; }
+    .arow { display: flex; gap: 11px; padding: 12px 18px 6px;
+      align-items: center; }
+    .acards { margin: 0 18px 12px 69px; display: flex;
+      flex-direction: column; gap: 7px; }
+    .acrow { display: flex; align-items: center; gap: 9px; }
+    .acdig { font-size: 11.5px; color: var(--ink); width: 56px; flex: none; }
+    .acst { font-size: 11px; color: var(--fog); white-space: nowrap; }
+    .acst.ok { font-weight: 600; color: var(--green);
+      font-variant-numeric: tabular-nums; }
+    .aday { font-size: 10.5px; color: var(--fog);
+      font-variant-numeric: tabular-nums; }
+    .aday.urgent { font-weight: 700; color: var(--red); }
+    .aday.ok { font-weight: 600; color: var(--green); }
+    .asub { font-size: 10.5px; color: var(--fog); margin-top: 2px;
+      font-variant-numeric: tabular-nums; }
+    .asub.ok { color: var(--green); }
     /* Last-run strip */
     .lastrun { display: flex; align-items: center; gap: 5px; padding: 7px 18px;
       background: #FAFBFC; border-bottom: 1px solid var(--line2);
@@ -2565,9 +2880,19 @@
       placeholder: t('searchOffers')});
     search.oninput = (e) => {
       state.query = e.target.value.trim().toLowerCase();
-      renderRows(body);
+      if (state.offersSub === 'added') renderAddedRows(body);
+      else renderRows(body);
     };
     body.append(el('div', {class: 'sr'}, search));
+    body.append(renderOffersSubTabs());
+
+    if (state.offersSub === 'added') {
+      renderAddedView(body);
+      shell.append(body);
+      shell.append(el('div', {class: 'bfoot'},
+        el('div', {class: 'note', text: t('addedFootnote')})));
+      return;
+    }
 
     const tabs = el('div', {class: 'tabs'});
     const addTab = (key, label, sub) => {
@@ -2621,6 +2946,188 @@
     renderRows(body);
 
     shell.append(renderFooter());
+  }
+
+  /** @return {!Element} The 可加 | 已加 sub-tab row under the search box. */
+  function renderOffersSubTabs() {
+    const addableN =
+        state.offers.filter((g) => addableCards(g).length > 0).length;
+    const addedN =
+        buildAddedIndex(state.cards, state.redeemed.byToken).length;
+    const mk = (key, label, n) => {
+      const tab = el('div',
+        {class: state.offersSub === key ? 'tab on' : 'tab'}, label);
+      tab.append(el('span', {class: 'n', text: ` ${n}`}));
+      tab.onclick = () => {
+        if (state.offersSub === key) return;
+        state.offersSub = key;
+        render();
+      };
+      return tab;
+    };
+    const row = el('div', {class: 'tabs'});
+    row.append(mk('addable', t('subAddable'), addableN));
+    row.append(mk('added', t('subAdded'), addedN));
+    row.append(el('div', {style: 'flex:1'}));
+    if (state.offersSub === 'added') {
+      row.append(el('div', {class: 'sortmini',
+        text: `${t('sortShortExpiry')} ▾`}));
+    }
+    return row;
+  }
+
+  /**
+   * Renders the added (redeem-tracking) sub-view into the list body: stats
+   * strip + always-expanded per-card rows, or a loading / error block while
+   * the savings records aren't available.
+   * @param {!Element} body Panel body.
+   */
+  function renderAddedView(body) {
+    const r = state.redeemed;
+    if (r.error) {
+      body.append(el('div', {class: 'info'},
+        el('b', {text: t('addedError')}), ' ',
+        el('a', {class: 'lnk', text: t('retry'),
+          onclick: () => loadRedeemed(true)})));
+      return;
+    }
+    if (!r.loaded) {
+      if (!r.loading) loadRedeemed();
+      body.append(el('div', {class: 'msg', style: 'padding:28px 24px'},
+        el('div', {style: 'display:flex;gap:10px;justify-content:center;' +
+            'align-items:center'},
+        el('span', {class: 'spin'}),
+        el('span', {class: 'note', text: t('addedLoading')}))));
+      return;
+    }
+    const groups = buildAddedIndex(state.cards, r.byToken);
+    const s = addedStats(groups);
+    body.append(counters([
+      {n: fmtMoney(s.redeemedAmount), l: t('statRedeemed'), c: 'g'},
+      {n: s.pending, l: t('statPending'), c: 'navy'},
+      {n: s.expiring, l: t('statExpiring'), c: 'r'}]));
+    body.append(el('div', {id: 'addedlist'}));
+    renderAddedRows(body);
+  }
+
+  /**
+   * (Re)draws just the added-offer rows (so typing in search keeps focus).
+   * @param {!Element} body Panel body (contains #addedlist).
+   */
+  function renderAddedRows(body) {
+    const list = body.querySelector('#addedlist');
+    if (!list) return;
+    list.textContent = '';
+    const q = state.query;
+    const groups = buildAddedIndex(state.cards, state.redeemed.byToken)
+      .filter((g) => !q || g.name.toLowerCase().includes(q));
+    if (groups.length === 0) {
+      list.append(el('div', {class: 'msg', style: 'padding:24px'},
+        el('div', {class: 'note',
+          text: q ? t('noMatchingOffers') : t('noAddedOffers')})));
+      return;
+    }
+    for (const g of groups) list.append(renderAddedRow(g));
+  }
+
+  /**
+   * One added-offer group: merchant row + always-open per-card redemption
+   * lines (a posting shows ✓ + amount + date; otherwise "no cashback seen").
+   * Fully-redeemed groups render dimmed.
+   * @param {!Object} g An added-offer group.
+   * @return {!Element} The group element.
+   */
+  function renderAddedRow(g) {
+    const logo = el('div', {class: 'logo'});
+    if (g.image) {
+      logo.append(el('img', {src: g.image, alt: '', loading: 'lazy'}));
+    } else {
+      const [bg, fg] = logoColors(g.name);
+      logo.style.background = bg;
+      logo.style.color = fg;
+      logo.textContent = merchantInitials(g.name);
+    }
+    const main = el('div', {class: 'mn'},
+      el('div', {class: 'nm', text: g.name}),
+      g.description ? el('div', {class: 'ds', text: g.description}) : null);
+
+    const rt = el('div', {class: 'rt'});
+    const ratio = t('redeemedOfCards',
+      {x: g.redeemedCount, y: g.cards.length});
+    if (g.fullyRedeemed) {
+      rt.append(el('div', {class: 'aday ok', text: `✓ ${ratio}`}));
+      const parts = [];
+      if (g.totalRedeemedUsd > 0) parts.push(fmtMoney(g.totalRedeemedUsd));
+      if (g.totalRedeemedPoints > 0) {
+        parts.push(fmtPoints(g.totalRedeemedPoints));
+      }
+      if (parts.length) {
+        rt.append(el('div', {class: 'asub',
+          text: t('totalRedeemed', {amt: parts.join(' + ')})}));
+      }
+    } else {
+      if (Number.isFinite(g.daysLeft)) {
+        rt.append(el('div', {
+          class: g.daysLeft <= 7 ? 'aday urgent' : 'aday',
+          text: daysLabel(g.daysLeft)}));
+      } else if (g.expiry) {
+        rt.append(el('div', {class: 'aday', text: expiryLabel(g)}));
+      }
+      rt.append(el('div',
+        {class: g.redeemedCount > 0 ? 'asub ok' : 'asub', text: ratio}));
+    }
+
+    const cardsBox = el('div', {class: 'acards'});
+    for (const c of g.cards) {
+      const sw = el('span', {class: 'sw'});
+      const cardData = cardOf(c.token);
+      if (cardData?.art) sw.append(el('img', {src: cardData.art, alt: ''}));
+      else sw.style.background = swatchStyle(c.token);
+      const digits = cardData ?
+        `…${cardData.digits}` : `…${String(c.token).slice(-4)}`;
+      let status;
+      if (c.redeemed) {
+        let text = t('cashbackPosted');
+        if (c.redeemed.amount > 0) {
+          text += ` ${c.redeemed.unit === 'points' ?
+            fmtPoints(c.redeemed.amount) : fmtMoney(c.redeemed.amount)}`;
+        }
+        if (c.redeemed.date) text += ` · ${c.redeemed.date}`;
+        status = el('span', {class: 'acst ok', text});
+      } else {
+        status = el('span', {class: 'acst', text: t('noCashbackSeen')});
+      }
+      cardsBox.append(el('div', {class: 'acrow'}, sw,
+        el('span', {class: 'acdig', text: digits}),
+        el('div', {style: 'flex:1'}), status));
+    }
+
+    return el('div', {class: g.fullyRedeemed ? 'agrp dim' : 'agrp'},
+      el('div', {class: 'arow'}, logo, main, rt), cardsBox);
+  }
+
+  /**
+   * Reads each card's redeemed (savings) list for the added sub-view.
+   * Cached until the next panel refresh; `force` re-reads.
+   * @param {boolean=} force Re-read even if already loaded.
+   * @return {!Promise<void>} Resolves when rendered.
+   */
+  async function loadRedeemed(force = false) {
+    const r = state.redeemed;
+    if (r.loading || (r.loaded && !force)) return;
+    state.redeemed = {...r, loading: true, error: ''};
+    try {
+      const byToken = new Map();
+      await mapLimit(state.cards, MAX_CONCURRENT_READS, async (card) => {
+        byToken.set(card.token, await fetchRedeemedOffers(card.token));
+      });
+      state.redeemed = {byToken, loaded: true, loading: false, error: '',
+        readAt: Date.now()};
+    } catch (error) {
+      state.redeemed = {...state.redeemed, loading: false,
+        error: error.message || t('addedError')};
+    }
+    render();
   }
 
   /** @return {!Element} The "上次执行" summary strip. */
@@ -2710,6 +3217,17 @@
   function fmtMoney(n, symbol = '$') {
     const v = Number(n) || 0;
     return v % 1 === 0 ? `${symbol}${v}` : `${symbol}${v.toFixed(2)}`;
+  }
+
+  /**
+   * Formats a points amount, e.g. `5,000 pts` / `5,000 点`. Points are a
+   * separate ledger from dollars and never go through {@link fmtMoney}.
+   * @param {number} n Points.
+   * @return {string} Localized points label.
+   */
+  function fmtPoints(n) {
+    return t('pointsAmount',
+      {n: Math.round(Number(n) || 0).toLocaleString('en-US')});
   }
 
   /** @param {number} d Days left. @return {string} e.g. `还剩 5 天`. */
@@ -3604,6 +4122,9 @@
   async function refresh() {
     state.lastResults = new Map();
     state.run = {done: 0, total: state.cards.length};
+    // Redeemed records are re-read lazily after a refresh.
+    state.redeemed = {byToken: new Map(), loaded: false, loading: false,
+      error: '', readAt: 0};
     state.view = 'loading';
     render();
     try {

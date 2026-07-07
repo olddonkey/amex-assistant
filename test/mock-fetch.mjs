@@ -144,6 +144,11 @@ export function createMockFetch(scenario) {
         return jsonResponse(
           {recommendedOffers: {offersList: {[key]: pages[index] || []}}});
       }
+      if (body.requestType === 'SAVINGS_LANDING') {
+        const items = (scenario.redeemedState || {})[token] || [];
+        return jsonResponse({offersSavingsViewAll:
+            {savingsOffers: {offersList: {page1: items}}}});
+      }
       if (body.requestType === 'ADDEDTOCARD_LANDING') {
         if (scenario.failVerify) throw new Error('verify read failed');
         if (scenario.failVerifyTimes > 0) {
