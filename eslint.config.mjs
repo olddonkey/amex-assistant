@@ -56,6 +56,8 @@ export default [
         console: 'readonly',
         URL: 'readonly',
         Blob: 'readonly',
+        localStorage: 'readonly',
+        navigator: 'readonly',
         // `module` is declared via a /* global */ comment in the source so the
         // Node export path also passes Tampermonkey's built-in linter.
       },

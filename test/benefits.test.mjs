@@ -150,17 +150,18 @@ test('annualFeeFor matches exact then substring, else 0', () => {
 });
 
 test('benefitPeriodLabel derives cadence from the period span', () => {
+  // Language-neutral keys; the UI localizes them via the period_* catalog.
   assert.equal(
     benefitPeriodLabel({periodStartDate: '2026-07-01',
-      periodEndDate: '2026-07-31'}), '月');
+      periodEndDate: '2026-07-31'}), 'month');
   assert.equal(
     benefitPeriodLabel({periodStartDate: '2026-01-01',
-      periodEndDate: '2026-06-30'}), '半年');
+      periodEndDate: '2026-06-30'}), 'half');
   assert.equal(
     benefitPeriodLabel({periodStartDate: '2026-01-01',
-      periodEndDate: '2026-12-31'}), '年');
+      periodEndDate: '2026-12-31'}), 'year');
   // Falls back to the duration string when dates are missing.
-  assert.equal(benefitPeriodLabel({trackerDuration: 'ANNUAL'}), '年');
+  assert.equal(benefitPeriodLabel({trackerDuration: 'ANNUAL'}), 'year');
 });
 
 test('daysUntil counts whole days from a fixed now', () => {
