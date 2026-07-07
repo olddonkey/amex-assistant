@@ -39,6 +39,39 @@ export function makeOffer(offerId, opts = {}) {
 }
 
 /**
+ * Builds a raw benefit tracker object (shape of the benefits endpoint).
+ * @param {string} name The `benefitName`.
+ * @param {{sor: (string|undefined), category: (string|undefined),
+ *          status: (string|undefined), start: (string|undefined),
+ *          end: (string|undefined), duration: (string|undefined),
+ *          target: (number|undefined), spent: (number|undefined),
+ *          remaining: (number|undefined),
+ *          benefitId: (string|undefined)}=} opts Optional overrides.
+ * @return {!Object} A raw tracker.
+ */
+export function makeTracker(name, opts = {}) {
+  const tracker = {
+    targetAmount: String(opts.target != null ? opts.target : 20),
+    spentAmount: String(opts.spent != null ? opts.spent : 0),
+    targetCurrency: 'USD',
+    targetCurrencySymbol: '$',
+  };
+  if (opts.remaining != null) tracker.remainingAmount = String(opts.remaining);
+  return {
+    benefitName: name,
+    benefitId: opts.benefitId || `B-${name}`,
+    sorBenefitId: opts.sor,
+    category: opts.category || 'CREDIT',
+    status: opts.status || 'ACTIVE',
+    periodStartDate: opts.start || '2026-07-01',
+    periodEndDate: opts.end || '2026-07-31',
+    trackerDuration: opts.duration,
+    tracker,
+    progress: {},
+  };
+}
+
+/**
  * Creates a `fetch` mock driven by a scenario.
  *
  * Scenario fields:
@@ -101,6 +134,13 @@ export function createMockFetch(scenario) {
       // error built with jsonResponse) instead of a raw enroll body.
       if (response && typeof response.json === 'function') return response;
       return jsonResponse(response);
+    }
+
+    if (url.includes('ReadBestLoyaltyBenefitsTrackers')) {
+      // Body is an array with one request object.
+      const token = body[0].accountToken;
+      const trackers = (scenario.benefits || {})[token] || [];
+      return jsonResponse([{trackers}]);
     }
 
     throw new Error(`mock-fetch: unhandled ${options.method || 'GET'} ${url}`);

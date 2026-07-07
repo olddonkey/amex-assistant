@@ -82,6 +82,13 @@
   /** Endpoint that enrolls a single offer onto a single card. */
   const ENROLL_URL = `${FUNCTIONS_ORIGIN}/CreateOffersHubEnrollment.web.v1`;
 
+  /** Endpoint that reads a card's loyalty benefit trackers (credits/perks). */
+  const READ_BENEFITS_URL =
+      `${FUNCTIONS_ORIGIN}/ReadBestLoyaltyBenefitsTrackers.v1`;
+
+  /** `limit` value that asks the benefits endpoint for every tracker. */
+  const BENEFIT_LIMIT = 'ALL';
+
   /** Locale sent with every offers request. */
   const LOCALE = 'en-US';
 
@@ -518,12 +525,23 @@
    * @return {string} Compact display label.
    */
   function cardShortName(account, token) {
+    const base = cardFamily(account, token);
+    const digits = cardDisplayDigits(account);
+    return digits ? `${base} ···${digits}` : base;
+  }
+
+  /**
+   * The card's product family alone (no digits), e.g. `Platinum`,
+   * `Blue Cash Preferred`. Falls back to `…1234` when the product is unknown.
+   * @param {!Object} account Raw account object.
+   * @param {string} token The card's `account_token`.
+   * @return {string} Product family label.
+   */
+  function cardFamily(account, token) {
     const product = getPath(account, 'product.description') ||
         getPath(account, 'profile.embossed_name') || '';
     const family = product.replace(/\s*Card\b/gi, '').replace(/[®™]/g, '').trim();
-    const base = family || `…${String(token).slice(-4)}`;
-    const digits = cardDisplayDigits(account);
-    return digits ? `${base} ···${digits}` : base;
+    return family || `…${String(token).slice(-4)}`;
   }
 
   /**
@@ -554,6 +572,9 @@
         tag: String(token).slice(-4),
         name: cardName(account, token),
         shortName: cardShortName(account, token),
+        family: cardFamily(account, token),
+        digits: cardDisplayDigits(account) || String(token).slice(-4),
+        relationship: account.relationship || 'BASIC',
         art: getPath(account, 'product.small_card_art') || '',
         eligible,
         enrolled,
@@ -562,6 +583,239 @@
       onProgress(cards.length, total);
     }
     return cards;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Benefits (loyalty benefit trackers): read each card's credits/perks and
+  // aggregate them across cards. Read-only — no write endpoint exists here.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Published annual fees (USD) by product family, used only to show the
+   * "annual-fee payback" stat. Not available from any API, so this is a small
+   * static table; a family not listed contributes 0 (the stat degrades
+   * gracefully). Matched by exact family first, then substring.
+   * @const {!Object<string, number>}
+   */
+  const ANNUAL_FEES = {
+    'Platinum': 695,
+    'Business Platinum': 695,
+    'Gold': 325,
+    'Business Gold': 375,
+    'Green': 150,
+    'Blue Cash Preferred': 95,
+    'Delta SkyMiles Gold': 150,
+    'Delta SkyMiles Platinum': 350,
+    'Delta SkyMiles Reserve': 650,
+    'Hilton Honors Surpass': 150,
+    'Hilton Honors Aspire': 550,
+    'Marriott Bonvoy Brilliant': 650,
+  };
+
+  /**
+   * Rounds a currency amount to whole cents (kills float drift from summing).
+   * @param {number} n Amount.
+   * @return {number} Amount rounded to two decimals.
+   */
+  function round2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  /**
+   * Looks up a card's published annual fee.
+   * @param {string} family Product family (e.g. `Platinum`).
+   * @return {number} Annual fee in USD, or 0 when unknown.
+   */
+  function annualFeeFor(family) {
+    if (!family) return 0;
+    if (ANNUAL_FEES[family] != null) return ANNUAL_FEES[family];
+    const hit = Object.keys(ANNUAL_FEES).find((k) => family.includes(k));
+    return hit ? ANNUAL_FEES[hit] : 0;
+  }
+
+  /**
+   * Reads one card's benefit trackers. The endpoint takes an array with a
+   * single request object and returns an array of `{trackers: [...]}` blocks.
+   * @param {string} token The card's `account_token`.
+   * @return {!Promise<!Array<!Object>>} Raw tracker objects for the card.
+   */
+  async function fetchAccountBenefits(token) {
+    const data = await postJson(READ_BENEFITS_URL,
+      [{accountToken: token, locale: LOCALE, limit: BENEFIT_LIMIT}]);
+    const blocks = Array.isArray(data) ? data : [];
+    return blocks.flatMap((block) => block.trackers || []);
+  }
+
+  /**
+   * Whole days from `now` until an ISO date string (negative once past).
+   * @param {string} dateStr A date the endpoint returns (`periodEndDate`).
+   * @param {number=} now Epoch ms treated as "today"; defaults to real time.
+   * @return {number} Days remaining, or `Infinity` when the date is unparsable.
+   */
+  function daysUntil(dateStr, now = Date.now()) {
+    const end = Date.parse(dateStr);
+    if (Number.isNaN(end)) return Infinity;
+    return Math.ceil((end - now) / 86400000);
+  }
+
+  /**
+   * A human period label for a tracker, from its reset cadence. Uses the span
+   * between period dates (robust to unknown `trackerDuration` enum values),
+   * falling back to the raw duration string.
+   * @param {!Object} tracker Raw tracker object.
+   * @return {string} One of `月` / `季` / `半年` / `年`, or `''`.
+   */
+  function benefitPeriodLabel(tracker) {
+    const start = Date.parse(tracker.periodStartDate);
+    const end = Date.parse(tracker.periodEndDate);
+    if (!Number.isNaN(start) && !Number.isNaN(end)) {
+      const days = Math.round((end - start) / 86400000);
+      if (days <= 45) return '月';
+      if (days <= 135) return '季';
+      if (days <= 250) return '半年';
+      return '年';
+    }
+    const dur = String(tracker.trackerDuration || '').toUpperCase();
+    if (dur.includes('MONTH')) return '月';
+    if (dur.includes('QUARTER')) return '季';
+    if (dur.includes('SEMI') || dur.includes('HALF')) return '半年';
+    if (dur.includes('YEAR') || dur.includes('ANNUAL')) return '年';
+    return '';
+  }
+
+  /**
+   * Normalizes a raw tracker into our benefit shape, tagged with its card.
+   * @param {!Object} tracker Raw tracker object.
+   * @param {!Object} card A snapshot card (`token`, `family`, `digits`, `art`).
+   * @return {!Object} Normalized benefit.
+   */
+  function normalizeBenefit(tracker, card) {
+    const tr = tracker.tracker || {};
+    const target = round2(parseFloat(tr.targetAmount) || 0);
+    const spent = round2(parseFloat(tr.spentAmount) || 0);
+    const remaining = tr.remainingAmount != null ?
+      round2(parseFloat(tr.remainingAmount) || 0) :
+      round2(Math.max(0, target - spent));
+    return {
+      sorBenefitId: tracker.sorBenefitId || tracker.benefitId || '',
+      benefitId: tracker.benefitId || '',
+      name: tracker.benefitName || '',
+      category: tracker.category || '',
+      status: tracker.status || '',
+      period: benefitPeriodLabel(tracker),
+      periodEnd: tracker.periodEndDate || '',
+      symbol: tr.targetCurrencySymbol || '$',
+      target,
+      spent,
+      remaining,
+      token: card.token,
+      family: card.family,
+      digits: card.digits,
+      art: card.art,
+    };
+  }
+
+  /**
+   * Reads benefits for every BASIC (owned, non-supplementary) card and returns
+   * one flat, card-tagged list. `onProgress(done, total)` fires per card.
+   * @param {!Array<!Object>} cards Snapshot cards.
+   * @param {function(number, number)=} onProgress Progress callback.
+   * @return {!Promise<!Array<!Object>>} Card-tagged benefits.
+   */
+  async function fetchAllBenefits(cards, onProgress = () => {}) {
+    const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
+    const total = owned.length;
+    onProgress(0, total);
+    const out = [];
+    let done = 0;
+    for (const card of owned) {
+      const trackers = await fetchAccountBenefits(card.token);
+      for (const tracker of trackers) out.push(normalizeBenefit(tracker, card));
+      onProgress(++done, total);
+    }
+    return out;
+  }
+
+  /**
+   * Finalizes a benefit group: sums amounts across its cards, picks the
+   * soonest period end, and flags multi-card / fully-used.
+   * @param {!Object} group Partial group with `entries`.
+   * @param {number} now Epoch ms treated as "today".
+   * @return {!Object} Finalized group.
+   */
+  function finalizeBenefitGroup(group, now) {
+    const spent = round2(group.entries.reduce((s, e) => s + e.spent, 0));
+    const target = round2(group.entries.reduce((s, e) => s + e.target, 0));
+    const ends = group.entries.map((e) => e.periodEnd).filter(Boolean).sort();
+    const periodEnd = ends[0] || '';
+    return {
+      ...group,
+      spent,
+      target,
+      remaining: round2(Math.max(0, target - spent)),
+      periodEnd,
+      daysLeft: daysUntil(periodEnd, now),
+      multiCard: group.entries.length > 1,
+      fullyUsed: target > 0 && spent >= target,
+      symbol: group.entries[0] ? group.entries[0].symbol : '$',
+    };
+  }
+
+  /**
+   * Groups card-tagged benefits across cards by `sorBenefitId` (the stable
+   * cross-card id) and sorts by soonest expiry first.
+   * @param {!Array<!Object>} benefits Card-tagged benefits.
+   * @param {number=} now Epoch ms treated as "today".
+   * @return {!Array<!Object>} Grouped benefits, soonest-to-expire first.
+   */
+  function buildBenefitIndex(benefits, now = Date.now()) {
+    const byKey = new Map();
+    for (const b of benefits) {
+      const key = b.sorBenefitId || `${b.token}:${b.benefitId}`;
+      let group = byKey.get(key);
+      if (!group) {
+        group = {key, name: b.name, category: b.category, period: b.period,
+          status: b.status, entries: []};
+        byKey.set(key, group);
+      }
+      group.entries.push(b);
+    }
+    return [...byKey.values()]
+      .map((group) => finalizeBenefitGroup(group, now))
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+  }
+
+  /**
+   * Computes the benefits header stats from grouped benefits.
+   * @param {!Array<!Object>} groups Grouped benefits.
+   * @param {!Array<!Object>} cards Snapshot cards (for annual-fee lookup).
+   * @param {number=} now Epoch ms treated as "today".
+   * @return {{thisMonthUnused: number, redeemedYtd: number,
+   *           annualFee: number, paybackPct: number}} Stats.
+   */
+  function benefitStats(groups, cards, now = Date.now()) {
+    const nowDate = new Date(now);
+    let thisMonthUnused = 0;
+    let redeemedYtd = 0;
+    for (const g of groups) {
+      redeemedYtd += g.spent;
+      const end = new Date(g.periodEnd);
+      if (!Number.isNaN(end.getTime()) &&
+          end.getFullYear() === nowDate.getFullYear() &&
+          end.getMonth() === nowDate.getMonth()) {
+        thisMonthUnused += g.remaining;
+      }
+    }
+    const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
+    const annualFee = owned.reduce((s, c) => s + annualFeeFor(c.family), 0);
+    const paybackPct =
+        annualFee > 0 ? Math.round(redeemedYtd / annualFee * 100) : 0;
+    return {
+      thisMonthUnused: round2(thisMonthUnused),
+      redeemedYtd: round2(redeemedYtd),
+      annualFee,
+      paybackPct,
+    };
   }
 
   /**
@@ -829,6 +1083,13 @@
     snapshot,
     executeSelected,
     planRetry,
+    fetchAccountBenefits,
+    fetchAllBenefits,
+    buildBenefitIndex,
+    benefitStats,
+    annualFeeFor,
+    benefitPeriodLabel,
+    daysUntil,
     RequestType,
     ResultState,
   };
