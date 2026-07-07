@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.17.0
+// @version      0.17.1
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -1602,8 +1602,14 @@
     .sh { font-size: 10px; font-weight: 700; color: var(--fog);
       letter-spacing: .6px; padding: 10px 0 5px; }
     .si { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0;
+      align-items: baseline;
       border-bottom: 1px solid var(--line2); font-size: 12px; color: var(--ink); }
     .si:last-child { border-bottom: none; }
+    /* Failed rows carry a long message — stack it under the card, left-aligned,
+       instead of wrapping ragged beside it. */
+    .si.col { flex-direction: column; align-items: stretch;
+      justify-content: flex-start; gap: 3px; }
+    .si.col .si-msg { font-size: 11px; line-height: 1.45; text-align: left; }
     .ri { display: flex; align-items: center; gap: 10px; padding: 8px 0;
       border-bottom: 1px solid var(--line2); font-size: 12px; color: var(--ink); }
     .ri .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
@@ -2626,12 +2632,17 @@
         el('div', {class: 'sh', text: title})));
       const wrap = el('div', {style: 'padding:0 18px 4px'});
       for (const r of items) {
-        const right = r.state === ResultState.FAILED && r.message ?
-          el('span', {class: cls, style: 'font-size:11px',
-            text: `“${r.message}”`}) :
-          el('span', {class: cls, text: glyph});
-        wrap.append(el('div', {class: 'si'},
-          el('span', {text: `${r.name} → ${cardLabel(r.token)}`}), right));
+        const label = `${r.name} → ${cardLabel(r.token)}`;
+        if (r.state === ResultState.FAILED && r.message) {
+          // Long server message: stack it under the card, left-aligned.
+          wrap.append(el('div', {class: 'si col'},
+            el('span', {text: label}),
+            el('span', {class: `${cls} si-msg`, text: `“${r.message}”`})));
+        } else {
+          wrap.append(el('div', {class: 'si'},
+            el('span', {text: label}),
+            el('span', {class: cls, text: glyph})));
+        }
       }
       body.append(wrap);
     };
