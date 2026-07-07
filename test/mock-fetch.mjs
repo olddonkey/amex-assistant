@@ -72,10 +72,30 @@ export function makeTracker(name, opts = {}) {
 }
 
 /**
+ * Builds a raw catalog benefit (shape of ReadLoyaltyBenefits.v2's dict values).
+ * @param {string} title The `benefitTitle` (may contain entities/tags).
+ * @param {{sor: (string|undefined), layoutType: (string|undefined),
+ *          enrollable: (boolean|undefined),
+ *          shortTitle: (string|undefined)}=} opts Optional overrides.
+ * @return {!Object} A raw catalog benefit.
+ */
+export function makeCatalogEntry(title, opts = {}) {
+  return {
+    benefitTitle: title,
+    benefitShortTitle: opts.shortTitle || title,
+    sorBenefitId: opts.sor || '',
+    layoutType: opts.layoutType || 'ENROLLED',
+    isEnrollable: opts.enrollable != null ? opts.enrollable : true,
+    imageName: 'x.webp',
+  };
+}
+
+/**
  * Creates a `fetch` mock driven by a scenario.
  *
  * Scenario fields:
  * - `accounts`: raw account objects (each with `account_token`).
+ * - `catalog`: `{[token]: {slug: catalogEntry}}` — ReadLoyaltyBenefits.v2.
  * - `eligiblePages`: `{[token]: Array<Array<offer>>}` — one inner array per
  *   hub page.
  * - `enrolledState`: `{[token]: Array<offer>}` — mutable; the current
@@ -141,6 +161,14 @@ export function createMockFetch(scenario) {
       const token = body[0].accountToken;
       const trackers = (scenario.benefits || {})[token] || [];
       return jsonResponse([{trackers}]);
+    }
+
+    if (url.includes('ReadLoyaltyBenefits.v2')) {
+      // Body is a plain object; response is {cardProduct, benefits} where
+      // benefits is a dict keyed by slug.
+      const token = body.accountToken;
+      const benefits = (scenario.catalog || {})[token] || {};
+      return jsonResponse({cardProduct: {}, benefits});
     }
 
     throw new Error(`mock-fetch: unhandled ${options.method || 'GET'} ${url}`);

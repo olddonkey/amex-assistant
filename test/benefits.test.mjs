@@ -8,11 +8,12 @@ import assert from 'node:assert/strict';
 import {afterEach, test} from 'node:test';
 
 import api from '../src/amex-assistant.user.js';
-import {createMockFetch, makeTracker} from './mock-fetch.mjs';
+import {createMockFetch, makeTracker, makeCatalogEntry} from './mock-fetch.mjs';
 
 const {
   fetchAllBenefits, buildBenefitIndex, benefitStats,
   annualFeeFor, benefitPeriodLabel, daysUntil,
+  decodeHtml, parseCreditAmount,
 } = api;
 
 const realFetch = globalThis.fetch;
@@ -146,3 +147,54 @@ test('daysUntil counts whole days from a fixed now', () => {
   assert.equal(daysUntil('2026-07-06T12:00:00Z', NOW), 0);
   assert.equal(daysUntil('not-a-date', NOW), Infinity);
 });
+
+test('decodeHtml strips tags and decodes entities', () => {
+  assert.equal(decodeHtml('&#36;209 CLEAR&#43; Credit'), '$209 CLEAR+ Credit');
+  assert.equal(decodeHtml('Marriott<sup>&#174;</sup> Gold'), 'Marriott® Gold');
+  assert.equal(decodeHtml('A &amp; B'), 'A & B');
+});
+
+test('parseCreditAmount pulls the dollar value from a title', () => {
+  assert.equal(parseCreditAmount('$209 CLEAR+ Credit'), 209);
+  assert.equal(parseCreditAmount('$1,200 Amex Travel Credit'), 1200);
+  assert.equal(parseCreditAmount('Global Entry Credit'), 0);
+});
+
+test('fetchAllBenefits joins the catalog: better titles + 未激活 rows',
+  async () => {
+    globalThis.fetch = createMockFetch({
+      benefits: {
+        PLAT: [
+          // tracker with a useless name (achieved) — catalog should fix it
+          makeTracker('Congratulations!',
+            {sor: 'DINING', target: 200, spent: 200, status: 'ACHIEVED'}),
+        ],
+      },
+      catalog: {
+        PLAT: {
+          'dining': makeCatalogEntry('$200 Dining Credit',
+            {sor: 'DINING', layoutType: 'ENROLLED'}),
+          // enrollable + not enrolled + no tracker → a 去激活 row
+          'clear': makeCatalogEntry('$209 CLEAR+ Credit',
+            {sor: 'CLEAR', layoutType: 'NOTENROLLED', enrollable: true}),
+          // enrolled-but-untracked and non-enrollable → must NOT appear
+          'lounge': makeCatalogEntry('Global Lounge',
+            {sor: 'LOUNGE', layoutType: 'ENROLLED', enrollable: false}),
+        },
+      },
+    });
+
+    const benefits = await fetchAllBenefits([card('PLAT', 'Platinum', '1005')]);
+    const dining = benefits.find((b) => b.sorBenefitId === 'DINING');
+    const clear = benefits.find((b) => b.sorBenefitId === 'CLEAR');
+
+    // tracker kept, but renamed from the catalog title
+    assert.equal(dining.name, '$200 Dining Credit');
+    // the not-enrolled catalog benefit was added as a 未激活 row
+    assert.ok(clear, 'not-enrolled benefit surfaced');
+    assert.equal(clear.status, 'NOTENROLLED');
+    assert.equal(clear.target, 209); // parsed from the title
+    assert.equal(clear.spent, 0);
+    // the enrolled-but-untracked, non-enrollable benefit is not surfaced
+    assert.ok(!benefits.some((b) => b.sorBenefitId === 'LOUNGE'));
+  });

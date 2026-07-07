@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.12.0
+// @version      0.13.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -85,6 +85,13 @@
   /** Endpoint that reads a card's loyalty benefit trackers (credits/perks). */
   const READ_BENEFITS_URL =
       `${FUNCTIONS_ORIGIN}/ReadBestLoyaltyBenefitsTrackers.v1`;
+
+  /**
+   * Endpoint that reads a card's full benefit catalog (every perk, keyed by
+   * slug, with enrollment status). Joined to the trackers by `sorBenefitId`
+   * to add not-yet-enrolled benefits and cleaner titles.
+   */
+  const READ_CATALOG_URL = `${FUNCTIONS_ORIGIN}/ReadLoyaltyBenefits.v2`;
 
   /** `limit` value that asks the benefits endpoint for every tracker. */
   const BENEFIT_LIMIT = 'ALL';
@@ -716,8 +723,82 @@
   }
 
   /**
-   * Reads benefits for every BASIC (owned, non-supplementary) card and returns
-   * one flat, card-tagged list. `onProgress(done, total)` fires per card.
+   * Reads a card's benefit catalog (every perk keyed by slug). The body is a
+   * plain object (the array form is rejected). Returns {} on any failure so the
+   * tracker view still works without it.
+   * @param {string} token The card's `account_token`.
+   * @return {!Promise<!Object>} The `benefits` dict, or {} on failure.
+   */
+  async function fetchCardCatalog(token) {
+    try {
+      const data = await postJson(READ_CATALOG_URL,
+        {accountToken: token, locale: LOCALE});
+      return data && data.benefits ? data.benefits : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Strips tags and decodes HTML entities from an API title for plain-text
+   * display (rendered via textContent, so this is for readability, not safety).
+   * @param {string} s Raw title.
+   * @return {string} Decoded plain text.
+   */
+  function decodeHtml(s) {
+    return String(s || '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Extracts the dollar amount from a benefit title (e.g. "$209 CLEAR+ Credit"
+   * → 209), so a not-yet-enrolled benefit can show its credit value.
+   * @param {string} title Benefit title.
+   * @return {number} Parsed amount, or 0.
+   */
+  function parseCreditAmount(title) {
+    const m = /\$([0-9][0-9,]*)/.exec(String(title));
+    return m ? parseFloat(m[1].replace(/,/g, '')) : 0;
+  }
+
+  /**
+   * Builds a benefit entry for a not-yet-enrolled catalog benefit.
+   * @param {!Object} entry Raw catalog benefit.
+   * @param {!Object} card A snapshot card.
+   * @return {!Object} Normalized (not-enrolled) benefit.
+   */
+  function catalogBenefit(entry, card) {
+    const name = decodeHtml(
+      entry.benefitShortTitle || entry.benefitTitle || entry.benefitName || '');
+    const target = parseCreditAmount(name);
+    return {
+      sorBenefitId: entry.sorBenefitId || '',
+      benefitId: entry.sorBenefitId || '',
+      name,
+      category: '',
+      status: 'NOTENROLLED',
+      period: '年',
+      periodEnd: '',
+      symbol: '$',
+      target,
+      spent: 0,
+      remaining: target,
+      token: card.token,
+      family: card.family,
+      digits: card.digits,
+      art: card.art,
+    };
+  }
+
+  /**
+   * Reads benefits for every BASIC (owned) card: the spend trackers plus the
+   * catalog. The catalog supplies cleaner titles (joined by `sorBenefitId`) and
+   * the not-yet-enrolled benefits (`layoutType === 'NOTENROLLED'`) that never
+   * appear as trackers. `onProgress(done, total)` fires per card.
    * @param {!Array<!Object>} cards Snapshot cards.
    * @param {function(number, number)=} onProgress Progress callback.
    * @return {!Promise<!Array<!Object>>} Card-tagged benefits.
@@ -726,14 +807,47 @@
     const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
     const total = owned.length;
     onProgress(0, total);
-    const out = [];
+    const benefits = [];
+    const catalogs = [];
     let done = 0;
     for (const card of owned) {
       const trackers = await fetchAccountBenefits(card.token);
-      for (const tracker of trackers) out.push(normalizeBenefit(tracker, card));
+      const catalog = await fetchCardCatalog(card.token);
+      for (const t of trackers) benefits.push(normalizeBenefit(t, card));
+      catalogs.push({card, catalog});
       onProgress(++done, total);
     }
-    return out;
+
+    // Prefer the catalog's clean title where it maps to a tracker (fixes names
+    // like "Congratulations!" that the tracker returns for achieved benefits).
+    const titleBySor = new Map();
+    for (const {catalog} of catalogs) {
+      for (const slug of Object.keys(catalog)) {
+        const c = catalog[slug];
+        if (c.sorBenefitId && c.benefitTitle) {
+          titleBySor.set(c.sorBenefitId, decodeHtml(c.benefitTitle));
+        }
+      }
+    }
+    for (const b of benefits) {
+      const title = titleBySor.get(b.sorBenefitId);
+      if (title) b.name = title;
+    }
+
+    // Add not-yet-enrolled benefits (no tracker on any card) as "去激活" rows.
+    const tracked = new Set(benefits.map((b) => b.sorBenefitId));
+    const added = new Set();
+    for (const {card, catalog} of catalogs) {
+      for (const slug of Object.keys(catalog)) {
+        const c = catalog[slug];
+        if (c.layoutType !== 'NOTENROLLED' || !c.isEnrollable) continue;
+        if (!c.sorBenefitId || tracked.has(c.sorBenefitId)) continue;
+        if (added.has(c.sorBenefitId)) continue;
+        added.add(c.sorBenefitId);
+        benefits.push(catalogBenefit(c, card));
+      }
+    }
+    return benefits;
   }
 
   /**
@@ -1084,12 +1198,15 @@
     executeSelected,
     planRetry,
     fetchAccountBenefits,
+    fetchCardCatalog,
     fetchAllBenefits,
     buildBenefitIndex,
     benefitStats,
     annualFeeFor,
     benefitPeriodLabel,
     daysUntil,
+    decodeHtml,
+    parseCreditAmount,
     RequestType,
     ResultState,
   };
@@ -2198,7 +2315,8 @@
             `${group.period || '年'}`}));
       const btn = el('div', {class: 'bactivate', text: '去激活 ↗',
         onclick: () => window.open(
-          'https://global.americanexpress.com/', '_blank')});
+          'https://global.americanexpress.com/card-benefits/view-all',
+          '_blank')});
       return el('div', {class: 'brow'}, logo, mn, rt, btn);
     }
 
