@@ -32,12 +32,18 @@ each card to tell you which ones **actually** got it.
 
 - **One offer → many cards.** Pick an offer once and queue it for every eligible
   card, or expand it to choose specific cards.
-- **Real verification, not just "success".** After submitting, it re-reads each
-  card's added-to-card list and reports what *actually* landed —
-  `confirmed / failed / suspected dedupe / unconfirmed`.
+- **Real verification, not just "success".** After submitting, it waits for the
+  server to settle, re-reads each card's added-to-card list (double-checking
+  apparent misses once more), and reports what *actually* landed —
+  `confirmed / failed / suspected dedupe / unconfirmed / skipped`.
 - **Concurrent by design.** All cards for the *same* offer are submitted
   together — once one card takes an offer Amex can make it ineligible on the
   rest, so firing together is what lets more than one card win.
+- **Retries, but never through a throttle.** Transient failures (network
+  hiccups, 5xx) are re-sent quickly so a blip doesn't cost a card its window;
+  on a throttle/interception signal (HTTP 429/403) the run stops early instead
+  of pushing through — unsubmitted pairs are reported as `skipped` for a later
+  retry.
 - **Private by construction.** `@grant none` means the script is *technically
   unable* to reach any third party — no backend, no telemetry, no IP collection.
 - **Zero build.** The userscript is the whole artifact; the network layer is
@@ -65,7 +71,9 @@ each card to tell you which ones **actually** got it.
    choose specific cards. Already-added cards are disabled.
 3. Click **加到所选卡**. All cards for the *same* offer are submitted together;
    different offers are paced a bit apart. When done, the panel re-reads each
-   card and reports `confirmed / failed / suspected dedupe / unconfirmed`.
+   card and reports `confirmed / failed / suspected dedupe / unconfirmed /
+   skipped`. If Amex throttles the session mid-run, the run stops early and the
+   panel suggests waiting a few minutes before retrying the unfinished pairs.
 
 `suspected dedupe` = Amex returned success, but the offer was **not** found on
 that card after re-reading — commonly because American Express allows the same

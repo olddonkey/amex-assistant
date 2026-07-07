@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.10.2
+// @version      0.11.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -64,7 +64,8 @@
 
   /**
    * @typedef {{key: string, name: string, token: string, offerId: string,
-   *            state: string, message: string}} EnrollResult
+   *            state: string, message: string, httpStatus: number,
+   *            blocked: boolean}} EnrollResult
    */
 
   /** Origin that serves Amex's internal "functions" RPC endpoints. */
@@ -95,6 +96,25 @@
   const MAX_DELAY_MS = 4000;
 
   /**
+   * Max automatic re-sends after a transient enroll failure (network error or
+   * 5xx). Retries are fast on purpose: if the same offer just succeeded on a
+   * sibling card, a slow retry could fall outside the window in which Amex
+   * still accepts the offer on this card.
+   */
+  const MAX_ENROLL_RETRIES = 2;
+
+  /** Minimum and maximum delay (ms) before re-sending a transient failure. */
+  const RETRY_MIN_MS = 300;
+  const RETRY_MAX_MS = 600;
+
+  /**
+   * Delay (ms) before re-reading added-to-card lists to verify a run. Enrolls
+   * take a moment to become visible on the added list; reading too early
+   * misclassifies real successes as GHOST.
+   */
+  const VERIFY_SETTLE_MS = 2500;
+
+  /**
    * `requestType` values understood by the offers hub. `OFFERSHUB_LANDING`
    * returns eligible offers; `ADDEDTOCARD_LANDING` returns already-added ones.
    * @enum {string}
@@ -117,6 +137,8 @@
     GHOST: 'ghost',
     /** Enroll reported success but the re-read could not be performed. */
     UNVERIFIED: 'unverified',
+    /** Never submitted: the run stopped early after a blocked request. */
+    SKIPPED: 'skipped',
   };
 
   // ---------------------------------------------------------------------------
@@ -223,7 +245,9 @@
   function classifyAttempts(attempts, enrolledByToken) {
     return attempts.map((attempt) => {
       let state;
-      if (!attempt.reportedOk) {
+      if (attempt.skipped) {
+        state = ResultState.SKIPPED;
+      } else if (!attempt.reportedOk) {
         state = ResultState.FAILED;
       } else if (!enrolledByToken.has(attempt.token)) {
         state = ResultState.UNVERIFIED;
@@ -238,6 +262,8 @@
         token: attempt.token,
         offerId: attempt.offerId,
         state,
+        httpStatus: attempt.httpStatus || 0,
+        blocked: !!attempt.blocked,
         message: attempt.message || '',
       };
     });
@@ -249,18 +275,41 @@
 
   /**
    * Performs a JSON request with the logged-in session and returns the parsed
-   * body. Throws on a non-2xx response.
+   * body. Throws a classified error on failure, tagged with:
+   * - `httpStatus`: the HTTP status (0 for network-level failures).
+   * - `transient`: worth an automatic quick retry (network error or 5xx).
+   * - `blocked`: the session is being throttled or intercepted (429, 401/403,
+   *   or a non-JSON body such as an interstitial page) — the caller should
+   *   stop sending further requests rather than push through.
    *
    * @param {string} url Request URL.
    * @param {!Object} options `fetch` options (method/headers/body).
    * @return {!Promise<!Object>} Parsed JSON response.
    */
   async function requestJson(url, options) {
-    const response = await fetch(url, options);
-    if (!response.ok) {
-      throw new Error(`Request to ${url} failed with ${response.status}`);
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (cause) {
+      throw Object.assign(new Error(`network error: ${cause.message}`),
+        {httpStatus: 0, transient: true, blocked: false});
     }
-    return response.json();
+    if (!response.ok) {
+      const status = response.status;
+      throw Object.assign(new Error(`HTTP ${status}`), {
+        httpStatus: status,
+        transient: status >= 500,
+        blocked: status === 429 || status === 403 || status === 401,
+      });
+    }
+    try {
+      return await response.json();
+    } catch {
+      // A 2xx that isn't JSON is an interstitial (login / challenge) page.
+      throw Object.assign(
+        new Error('non-JSON response (blocked or logged out?)'),
+        {httpStatus: response.status, transient: false, blocked: true});
+    }
   }
 
   /**
@@ -516,31 +565,67 @@
   }
 
   /**
-   * Sleeps for a random duration within the configured delay window. Kept as a
-   * default so callers (tests) can inject a no-op.
+   * Sleeps for a random duration within `[min, max]` ms.
+   * @param {number} min Minimum delay.
+   * @param {number} max Maximum delay.
    * @return {!Promise<void>} Resolves after the delay.
    */
-  function randomDelay() {
-    const ms = MIN_DELAY_MS + Math.random() * (MAX_DELAY_MS - MIN_DELAY_MS);
+  function sleepBetween(min, max) {
+    const ms = min + Math.random() * (max - min);
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
-   * Enrolls one task, never throwing; returns a tagged attempt.
-   * @param {!Task} task The (offer, card) work item.
-   * @return {!Promise<!Object>} Attempt tagged with `reportedOk` and `message`.
+   * Default pacing between offer groups. Kept as a default so callers (tests)
+   * can inject a no-op.
+   * @return {!Promise<void>} Resolves after the delay.
    */
-  async function attemptEnroll(task) {
-    try {
-      const response = await enrollOffer(task.token, task.offerId);
-      return {
-        ...task,
-        reportedOk: isEnrollSuccess(response),
-        message: getPath(response, 'status.message') || '',
-      };
-    } catch (error) {
-      return {...task, reportedOk: false,
-        message: error.message || 'request failed'};
+  function randomDelay() {
+    return sleepBetween(MIN_DELAY_MS, MAX_DELAY_MS);
+  }
+
+  /** @return {!Promise<void>} Short pause before re-sending a failure. */
+  function randomRetryDelay() {
+    return sleepBetween(RETRY_MIN_MS, RETRY_MAX_MS);
+  }
+
+  /** @return {!Promise<void>} Pause for the server to settle before verify. */
+  function verifySettleDelay() {
+    return sleepBetween(VERIFY_SETTLE_MS, VERIFY_SETTLE_MS);
+  }
+
+  /**
+   * Enrolls one task, never throwing; returns a tagged attempt.
+   *
+   * Transient failures (network error, 5xx) are re-sent quickly up to
+   * {@link MAX_ENROLL_RETRIES} times so a hiccup does not permanently lose a
+   * card that is still inside the enrollment window. Definitive server answers
+   * — a 2xx business rejection, or a blocked signal (429/401/403/non-JSON) —
+   * are never re-sent.
+   *
+   * @param {!Task} task The (offer, card) work item.
+   * @param {function(): !Promise<void>=} retryDelay Pause between re-sends.
+   * @return {!Promise<!Object>} Attempt tagged with `reportedOk`, `message`,
+   *     and on failure `httpStatus` and `blocked`.
+   */
+  async function attemptEnroll(task, retryDelay = randomRetryDelay) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const response = await enrollOffer(task.token, task.offerId);
+        return {
+          ...task,
+          reportedOk: isEnrollSuccess(response),
+          message: getPath(response, 'status.message') || '',
+        };
+      } catch (error) {
+        if (error.transient && attempt < MAX_ENROLL_RETRIES) {
+          await retryDelay();
+          continue;
+        }
+        return {...task, reportedOk: false,
+          httpStatus: error.httpStatus || 0, blocked: !!error.blocked,
+          message: error.message || 'request failed'};
+      }
     }
   }
 
@@ -559,22 +644,55 @@
   }
 
   /**
+   * Reads a card's added-offer keys, retrying once on a transient failure.
+   * Reads are idempotent, so one cheap retry converts most would-be UNVERIFIED
+   * outcomes into real answers. A blocked signal is not retried.
+   *
+   * @param {string} token The card's `account_token`.
+   * @param {function(): !Promise<void>} retryDelay Pause before the retry.
+   * @return {!Promise<?Set<string>>} Added-offer keys, or null if unreadable.
+   */
+  async function readEnrolledKeysSafe(token, retryDelay) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fetchEnrolledKeys(token);
+      } catch (error) {
+        if (error.blocked || attempt >= 1) return null;
+        await retryDelay();
+      }
+    }
+  }
+
+  /**
    * Enrolls the given (offer, card) tasks, then re-reads the affected cards and
    * classifies each attempt.
    *
    * Each task enrolls with the card's own `offerId`. All cards for the SAME
    * offer are fired concurrently: once one card enrolls an offer, Amex can make
    * it ineligible on the others, so a sequential pass would let only the first
-   * card win. Different offers are paced apart by `delay`. A single failure is
-   * recorded and does not abort the run.
+   * card win. Different offers are paced apart by `delay`.
+   *
+   * A single failure is recorded and does not abort the run — but a blocked
+   * signal (429 / interception) does: remaining groups are not submitted (their
+   * tasks come back SKIPPED) and the verification re-read is skipped too, so
+   * the tool never pushes through a throttle.
+   *
+   * Verification waits `settleDelay` for the server to settle, then re-reads
+   * each card that reported success. Cards whose reported-ok offers are still
+   * missing get one more settle + re-read before being classified GHOST, since
+   * a fresh enrollment can take a moment to appear on the added list.
    *
    * @param {!Array<!Task>} tasks Flattened (offer, card) work items.
    * @param {{onProgress: (function(number, number)|undefined),
    *          onSettle: (function(!Object)|undefined),
-   *          delay: (function(): !Promise<void>|undefined)}=} options Behavior
-   *     overrides. `onSettle` fires with each attempt as its enroll settles
-   *     (before verification). `delay` (between offers) defaults to
-   *     {@link randomDelay}.
+   *          delay: (function(): !Promise<void>|undefined),
+   *          retryDelay: (function(): !Promise<void>|undefined),
+   *          settleDelay: (function(): !Promise<void>|undefined)}=} options
+   *     Behavior overrides. `onSettle` fires with each attempt as its enroll
+   *     settles (before verification). `delay` (between offers) defaults to
+   *     {@link randomDelay}; `retryDelay` (before re-sends/re-reads) to
+   *     {@link randomRetryDelay}; `settleDelay` (before verification reads) to
+   *     {@link verifySettleDelay}.
    * @return {!Promise<!Array<!EnrollResult>>} One result per task.
    */
   async function executeSelected(tasks, options = {}) {
@@ -582,32 +700,113 @@
       onProgress = () => {},
       onSettle = () => {},
       delay = randomDelay,
+      retryDelay = randomRetryDelay,
+      settleDelay = verifySettleDelay,
     } = options;
 
     const offerGroups = groupTasksByOffer(tasks);
     const attempts = [];
     let done = 0;
+    let blocked = false;
     for (let i = 0; i < offerGroups.length; i++) {
+      if (blocked) {
+        for (const task of offerGroups[i]) {
+          const attempt = {...task, reportedOk: false, skipped: true,
+            message: 'not submitted: run stopped after a blocked request'};
+          attempts.push(attempt);
+          onSettle(attempt);
+          onProgress(++done, tasks.length);
+        }
+        continue;
+      }
       const settled = await Promise.all(offerGroups[i].map(async (task) => {
-        const attempt = await attemptEnroll(task);
+        const attempt = await attemptEnroll(task, retryDelay);
         onSettle(attempt);
         onProgress(++done, tasks.length);
         return attempt;
       }));
       attempts.push(...settled);
-      if (i < offerGroups.length - 1) await delay();
+      if (settled.some((attempt) => attempt.blocked)) blocked = true;
+      else if (i < offerGroups.length - 1) await delay();
     }
 
     const enrolledByToken = new Map();
-    for (const token of new Set(tasks.map((task) => task.token))) {
-      try {
-        enrolledByToken.set(token, await fetchEnrolledKeys(token));
-      } catch {
-        // Leave this token unset so its (already-sent) attempts classify as
-        // UNVERIFIED instead of the whole run throwing and losing results.
+    if (!blocked) {
+      // Only cards that reported a success need a re-read; failed attempts
+      // classify as FAILED regardless of what the added list says.
+      const okTokens =
+          new Set(attempts.filter((a) => a.reportedOk).map((a) => a.token));
+      if (okTokens.size) await settleDelay();
+      for (const token of okTokens) {
+        const keys = await readEnrolledKeysSafe(token, retryDelay);
+        if (keys) enrolledByToken.set(token, keys);
+      }
+      // Second chance for ghost candidates: re-read once more after another
+      // settle, merging (an offer seen in either read counts as enrolled).
+      const ghostTokens = new Set(attempts
+        .filter((a) => a.reportedOk && enrolledByToken.has(a.token) &&
+                !enrolledByToken.get(a.token).has(a.key))
+        .map((a) => a.token));
+      if (ghostTokens.size) {
+        await settleDelay();
+        for (const token of ghostTokens) {
+          const keys = await readEnrolledKeysSafe(token, retryDelay);
+          if (keys) {
+            const merged = enrolledByToken.get(token);
+            for (const key of keys) merged.add(key);
+          }
+        }
       }
     }
     return classifyAttempts(attempts, enrolledByToken);
+  }
+
+  /**
+   * Plans a retry of the failed and never-submitted pairs from a prior run
+   * against a fresh offer index. Pure: does no I/O.
+   *
+   * Per-card offerIds can rotate between reads, so re-sending the token stored
+   * in an old result can fail for the wrong reason; each pair is re-resolved
+   * to the card's current `offerId` by group key instead. The fresh index also
+   * settles two cases without a resend:
+   * - `landed`: the card now shows the offer as added — the old "failure"
+   *   actually made it (e.g. a timed-out enroll that succeeded server-side).
+   *   Returned reclassified as VERIFIED.
+   * - `gone`: the card no longer lists the offer at all — the enrollment
+   *   window is closed and a resend cannot succeed. Returned with the original
+   *   state, a note appended to the message, and `gone: true` so callers stop
+   *   offering to retry it.
+   *
+   * @param {!Array<!EnrollResult>} results A prior run's results.
+   * @param {!Array<!OfferGroup>} offers The current offer index.
+   * @return {{tasks: !Array<!Task>, landed: !Array<!EnrollResult>,
+   *           gone: !Array<!EnrollResult>}} Tasks to resend, plus the pairs
+   *     settled without resending.
+   */
+  function planRetry(results, offers) {
+    const tasks = [];
+    const landed = [];
+    const gone = [];
+    for (const result of results) {
+      const retryable = (result.state === ResultState.FAILED ||
+          result.state === ResultState.SKIPPED) && !result.gone;
+      if (!retryable) continue;
+      const group = offers.find((g) => g.key === result.key);
+      const card = group &&
+          group.cards.find((c) => c.token === result.token);
+      if (card && card.enrolled) {
+        landed.push({...result, state: ResultState.VERIFIED,
+          message: 'already on the card (found before retrying)'});
+      } else if (!card) {
+        const note = 'offer no longer listed for this card';
+        gone.push({...result, gone: true,
+          message: result.message ? `${result.message} · ${note}` : note});
+      } else {
+        tasks.push({token: result.token, offerId: card.offerId,
+          key: result.key, name: result.name});
+      }
+    }
+    return {tasks, landed, gone};
   }
 
   /** Functions exposed for reuse and unit testing. */
@@ -629,6 +828,7 @@
     isEnrollSuccess,
     snapshot,
     executeSelected,
+    planRetry,
     RequestType,
     ResultState,
   };
@@ -882,6 +1082,7 @@
     .ccard .mk.r-failed { color: var(--red); }
     .ccard .mk.r-ghost { color: var(--amber); }
     .ccard .mk.r-unverified { color: var(--mut); }
+    .ccard .mk.r-skipped { color: var(--amber); }
     input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--blue);
       flex: none; }
     .ccard input[type=checkbox] { width: 14px; height: 14px; }
@@ -1109,7 +1310,8 @@
         label.append(el('span', {class: 'mk en', text: '已加 ✓'}));
       } else if (result) {
         const mk = {[ResultState.FAILED]: '✗', [ResultState.GHOST]: '⚠',
-          [ResultState.UNVERIFIED]: '?', [ResultState.VERIFIED]: '✓'};
+          [ResultState.UNVERIFIED]: '?', [ResultState.VERIFIED]: '✓',
+          [ResultState.SKIPPED]: '⊘'};
         label.append(el('span', {class: `mk r-${result.state}`,
           text: mk[result.state] || ''}));
       }
@@ -1307,7 +1509,8 @@
     const run = state.run;
     const seen = run.results.length;
     const ok = run.results.filter((r) => r.reportedOk).length;
-    const fail = run.results.filter((r) => !r.reportedOk).length;
+    const skipped = run.results.filter((r) => r.skipped).length;
+    const fail = seen - ok - skipped;
     const pending = run.total - seen;
     const pct = run.total ? Math.round(seen / run.total * 100) : 0;
     shell.append(renderHeader({glyph: el('span', {class: 'spin'}),
@@ -1318,9 +1521,11 @@
     const body = el('div', {class: 'body'});
     body.append(el('div', {style: 'padding:16px 18px 0'},
       el('div', {class: 'bar'}, el('div', {style: `width:${pct}%`}))));
-    body.append(counters([
+    const cols = [
       {n: ok, l: '提交成功', c: 'g'}, {n: fail, l: '提交失败', c: 'r'},
-      {n: pending, l: '提交中', c: 'b'}]));
+      {n: pending, l: '提交中', c: 'b'}];
+    if (skipped) cols.push({n: skipped, l: '未提交', c: 'am'});
+    body.append(counters(cols));
     const rl = el('div', {style: 'padding:4px 18px 8px'});
     const settledIds = new Set(run.results.map((r) => `${r.key}|${r.token}`));
     for (const task of run.tasks) {
@@ -1330,6 +1535,9 @@
       let icon; let stTxt; let stCls;
       if (!done) {
         icon = el('span', {class: 'spin'}); stTxt = '提交中'; stCls = 'st b';
+      } else if (done.skipped) {
+        icon = el('span', {class: 'am', text: '⊘'}); stTxt = '未提交';
+        stCls = 'st am';
       } else if (done.reportedOk) {
         icon = el('span', {class: 'g', text: '✓'}); stTxt = '提交成功';
         stCls = 'st g';
@@ -1354,19 +1562,34 @@
   function renderResultView(shell) {
     const results = [...state.lastResults.values()];
     const n = (s) => results.filter((r) => r.state === s).length;
-    shell.append(renderHeader({glyph: '✓', title: '完成，已核对',
-      subtitle: `${results.length} 次 Add to Card 已处理`, close: true}));
+    const throttled = results.some(
+      (r) => r.blocked || r.state === ResultState.SKIPPED);
+    shell.append(renderHeader({glyph: throttled ? '!' : '✓',
+      title: throttled ? '本轮已提前中止' : '完成，已核对',
+      subtitle: `${results.length} 次 Add to Card 已处理`, close: true,
+      err: throttled}));
     const body = el('div', {class: 'body'});
-    body.append(counters([
+    const cols = [
       {n: n(ResultState.VERIFIED), l: '确认已加', c: 'g'},
       {n: n(ResultState.FAILED), l: '添加失败', c: 'r'},
       {n: n(ResultState.GHOST) + n(ResultState.UNVERIFIED),
-        l: '疑似去重/无法确认', c: 'am'}]));
+        l: '疑似去重/无法确认', c: 'am'}];
+    if (n(ResultState.SKIPPED)) {
+      cols.push({n: n(ResultState.SKIPPED), l: '未提交', c: 'am'});
+    }
+    body.append(counters(cols));
+    if (throttled) {
+      body.append(el('div', {class: 'info'},
+        el('b', {text: '检测到限流或拦截。'}),
+        '收到 429/403 或异常响应后，本轮剩余提交已中止，也未做复查核对，' +
+          '避免继续触发风控。建议等几分钟再点「重试未完成项」，' +
+          '不要立即反复重发。'));
+    }
     body.append(el('div', {class: 'info'},
       el('b', {text: '什么是疑似去重？'}),
       'Amex 返回 SUCCESS，但重新读取已加列表后没在这张卡看到这个 ' +
         'offer，就会归到这里。常见原因是同一个 offer 可能只允许加到' +
-        '一张卡；「无法确认」表示重新读取失败。'));
+        '一张卡；「无法确认」表示复查未能完成。'));
 
     const section = (title, filter, glyph, cls) => {
       const items = results.filter(filter);
@@ -1386,14 +1609,18 @@
     };
     section('确认已加', (r) => r.state === ResultState.VERIFIED, '✓', 'g');
     section('添加失败', (r) => r.state === ResultState.FAILED, '✗', 'r');
+    section('未提交 — 检测到限流后中止',
+      (r) => r.state === ResultState.SKIPPED, '⊘', 'am');
     section('疑似去重 — SUCCESS 但复查未出现在已加列表',
       (r) => r.state === ResultState.GHOST, '⚠', 'am');
-    section('无法确认 — 重新读取失败',
+    section('无法确认 — 复查未完成',
       (r) => r.state === ResultState.UNVERIFIED, '?', 'note');
 
-    const retry = el('div', {class: 'lnk rerun', text: '重试添加失败项',
+    const retryable = (r) => (r.state === ResultState.FAILED ||
+        r.state === ResultState.SKIPPED) && !r.gone;
+    const retry = el('div', {class: 'lnk rerun', text: '重试未完成项',
       onclick: () => retryFailed()});
-    if (!results.some((r) => r.state === ResultState.FAILED)) {
+    if (!results.some(retryable)) {
       retry.style.display = 'none';
     }
     shell.append(body);
@@ -1504,13 +1731,22 @@
           render();
         },
       });
-      state.lastResults = new Map(
-        results.map((r) => [`${r.key}|${r.token}`, r]));
+      // A retry merges over the previous report so pairs settled earlier
+      // (verified, landed, gone) stay visible; a fresh run starts clean.
+      const merged = presetTasks ? state.lastResults : new Map();
+      for (const r of results) merged.set(`${r.key}|${r.token}`, r);
+      state.lastResults = merged;
       state.selected.clear();
-      try {
-        state.cards = await snapshot();
-        state.offers = buildOfferIndex(state.cards);
-      } catch { /* keep previous list; result view still shows outcomes */ }
+      const throttled = results.some(
+        (r) => r.blocked || r.state === ResultState.SKIPPED);
+      if (!throttled) {
+        // Refresh the offer list; skipped when throttled so the tool goes
+        // fully quiet instead of firing another full read sweep.
+        try {
+          state.cards = await snapshot();
+          state.offers = buildOfferIndex(state.cards);
+        } catch { /* keep previous list; result view still shows outcomes */ }
+      }
       state.view = 'result';
     } catch (error) {
       state.errorMessage = `添加过程中断：${error.message}`;
@@ -1519,20 +1755,28 @@
     render();
   }
 
-  /** Re-runs the failed (offer, card) pairs from the last result. */
+  /**
+   * Re-runs the failed and never-submitted pairs from the last result.
+   * Pairs are re-planned against the current snapshot first (fresh offerIds;
+   * see {@link planRetry}); pairs that turn out to be already on the card or
+   * no longer available are settled in place without a resend.
+   */
   function retryFailed() {
-    const tasks = [...state.lastResults.values()]
-      .filter((r) => r.state === ResultState.FAILED)
-      .map((r) => ({token: r.token, offerId: r.offerId, key: r.key,
-        name: r.name}));
+    const {tasks, landed, gone} =
+        planRetry([...state.lastResults.values()], state.offers);
+    for (const r of [...landed, ...gone]) {
+      state.lastResults.set(`${r.key}|${r.token}`, r);
+    }
     if (tasks.length) runSelected(tasks);
+    else render(); // nothing left to resend; show the settled states
   }
 
   /** Downloads the last run's results as a CSV file. */
   function exportCsv() {
-    const rows = [['offer', 'card', 'state', 'message']];
+    const rows = [['offer', 'card', 'state', 'http_status', 'message']];
     for (const r of state.lastResults.values()) {
-      rows.push([r.name, cardLabel(r.token), r.state, r.message || '']);
+      rows.push([r.name, cardLabel(r.token), r.state, r.httpStatus || '',
+        r.message || '']);
     }
     const csv = rows.map((row) => row
       .map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','),
