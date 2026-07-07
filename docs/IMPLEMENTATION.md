@@ -129,3 +129,13 @@ M1–M3 全部合并；用户已过 M0 与首次真实 enroll 冒烟；面板能
 - **单卡失败不再拖垮整个面板**：snapshot 中某张卡重试后仍读取失败 → 该卡标 `readFailed`、offer 列表为空，其余卡照常展示，列表页顶部有提示条指出哪些卡缺失；全部读取失败（无任何 offer）则进错误页而不是误导性的"暂无 offer"。读取途中收到 429/401/403 等拦截信号仍整体中止（不往墙上继续撞）。
 - **快照过期防护**（`SNAPSHOT_MAX_AGE_MS` = 10 分钟）：提交（含确认对话框后的正式 run 与重试）时若快照已老化，先并发（capped）重读涉及卡的 eligible / 已加列表，用 `resolveTasks`（从 `planRetry` 抽出的纯函数）按分组 key 换成新 `offerId`；期间发现已加上或已下架的对子不再提交。重读失败则按原 token 照发——宁可试也不阻塞。
 - `refresh` 与跑完后的自动刷新记录 `snapshotAt` 时间戳；`snapshot` 新增可注入 `retryDelay`（测试注入 no-op）。mock 新增 `onReadOffers` 钩子模拟单卡读取失败 / 限流。
+
+---
+
+## 9. v0.19.0 — 中英双语
+
+- **词表 + `t()`**（core 层，导出可测）：面板所有用户可见字符串收进 `MESSAGES.zh` / `MESSAGES.en`，`t(key, params)` 按当前语言取词并做 `{name}` 插值；未知 key 原样返回（可见降级）。单测强制两种语言 **key 完全对齐**、无空串——漏翻会直接挂测试。
+- **不翻的边界**：结果里的诊断 message（服务端原文、`HTTP 429` 等）与 CSV 表头保持英文——它们是跨语言应稳定的数据；商家名 / 卡产品名来自 Amex 接口原文。`benefitPeriodLabel` 改为返回中性枚举（`month/quarter/half/year`），由 UI 的 `period_*` 词条本地化。
+- **首次引导**：无 localStorage 记录时（key `amexAssistantLang`，`@grant none` 下用 Amex 域的页面 localStorage），打开面板先进双语的语言选择视图，按 `navigator.language` 预高亮推荐项；选择后才开始读取。老用户有存档则无感。
+- **随时切换**：列表 / Benefits / 空态 / 错误页的 header 带「中/EN」圆钮（显示目标语言），点击即切换 + 持久化 + 全量重渲染；launcher 药丸文案同步更新。
+- 版本 0.18.0 → 0.19.0；新增 `test/i18n.test.mjs`（53 个测试全绿）。
