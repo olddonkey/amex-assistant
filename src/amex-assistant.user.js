@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.11.0
+// @version      0.16.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -82,8 +82,25 @@
   /** Endpoint that enrolls a single offer onto a single card. */
   const ENROLL_URL = `${FUNCTIONS_ORIGIN}/CreateOffersHubEnrollment.web.v1`;
 
+  /** Endpoint that reads a card's loyalty benefit trackers (credits/perks). */
+  const READ_BENEFITS_URL =
+      `${FUNCTIONS_ORIGIN}/ReadBestLoyaltyBenefitsTrackers.v1`;
+
+  /**
+   * Endpoint that reads a card's full benefit catalog (every perk, keyed by
+   * slug, with enrollment status). Joined to the trackers by `sorBenefitId`
+   * to add not-yet-enrolled benefits and cleaner titles.
+   */
+  const READ_CATALOG_URL = `${FUNCTIONS_ORIGIN}/ReadLoyaltyBenefits.v2`;
+
+  /** `limit` value that asks the benefits endpoint for every tracker. */
+  const BENEFIT_LIMIT = 'ALL';
+
   /** Locale sent with every offers request. */
   const LOCALE = 'en-US';
+
+  /** Max cards read from Amex at once, to stay gentle on big accounts. */
+  const MAX_CONCURRENT_READS = 4;
 
   /** Only these offer types are shown; matches the web app's default filter. */
   const OFFER_TYPE = 'MERCHANT';
@@ -518,12 +535,46 @@
    * @return {string} Compact display label.
    */
   function cardShortName(account, token) {
+    const base = cardFamily(account, token);
+    const digits = cardDisplayDigits(account);
+    return digits ? `${base} ···${digits}` : base;
+  }
+
+  /**
+   * The card's product family alone (no digits), e.g. `Platinum`,
+   * `Blue Cash Preferred`. Falls back to `…1234` when the product is unknown.
+   * @param {!Object} account Raw account object.
+   * @param {string} token The card's `account_token`.
+   * @return {string} Product family label.
+   */
+  function cardFamily(account, token) {
     const product = getPath(account, 'product.description') ||
         getPath(account, 'profile.embossed_name') || '';
     const family = product.replace(/\s*Card\b/gi, '').replace(/[®™]/g, '').trim();
-    const base = family || `…${String(token).slice(-4)}`;
-    const digits = cardDisplayDigits(account);
-    return digits ? `${base} ···${digits}` : base;
+    return family || `…${String(token).slice(-4)}`;
+  }
+
+  /**
+   * Maps `fn` over `items` with at most `limit` running concurrently,
+   * preserving input order. Caps how many cards we read from Amex at once.
+   * @param {!Array<T>} items Items to map.
+   * @param {number} limit Max concurrent invocations.
+   * @param {function(T, number): !Promise<R>} fn Async mapper.
+   * @return {!Promise<!Array<R>>} Results in input order.
+   * @template T, R
+   */
+  async function mapLimit(items, limit, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await fn(items[i], i);
+      }
+    };
+    const count = Math.max(1, Math.min(limit, items.length));
+    await Promise.all(Array.from({length: count}, () => worker()));
+    return results;
   }
 
   /**
@@ -542,26 +593,412 @@
       .filter((account) => account.account_token);
     const total = accounts.length;
     onProgress(0, total);
-    const cards = [];
-    for (const account of accounts) {
+    // Read cards concurrently but capped (was fully serial, i.e. slow on an
+    // 8-card account). Reads within a card stay sequential, so at most
+    // MAX_CONCURRENT_READS requests are in flight.
+    let done = 0;
+    return mapLimit(accounts, MAX_CONCURRENT_READS, async (account) => {
       const token = account.account_token;
       const eligible = await fetchEligibleOffers(token);
       const enrolled = await fetchEnrolledOffers(token);
       const enrolledKeys =
           new Set(enrolled.map(offerGroupKey).filter(Boolean));
-      cards.push({
+      onProgress(++done, total);
+      return {
         token,
         tag: String(token).slice(-4),
         name: cardName(account, token),
         shortName: cardShortName(account, token),
+        family: cardFamily(account, token),
+        digits: cardDisplayDigits(account) || String(token).slice(-4),
+        relationship: account.relationship || 'BASIC',
         art: getPath(account, 'product.small_card_art') || '',
         eligible,
         enrolled,
         enrolledKeys,
-      });
-      onProgress(cards.length, total);
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Benefits (loyalty benefit trackers): read each card's credits/perks and
+  // aggregate them across cards. Read-only — no write endpoint exists here.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Published annual fees (USD) by product family, used only to show the
+   * "annual-fee payback" stat. Not available from any API, so this is a small
+   * static table; a family not listed contributes 0 (the stat degrades
+   * gracefully). Matched by exact family first, then substring.
+   * @const {!Object<string, number>}
+   */
+  const ANNUAL_FEES = {
+    'Platinum': 695,
+    'Business Platinum': 695,
+    'Gold': 325,
+    'Business Gold': 375,
+    'Green': 150,
+    'Blue Cash Preferred': 95,
+    'Delta SkyMiles Gold': 150,
+    'Delta SkyMiles Platinum': 350,
+    'Delta SkyMiles Reserve': 650,
+    'Hilton Honors Surpass': 150,
+    'Hilton Honors Aspire': 550,
+    'Marriott Bonvoy Brilliant': 650,
+  };
+
+  /**
+   * Rounds a currency amount to whole cents (kills float drift from summing).
+   * @param {number} n Amount.
+   * @return {number} Amount rounded to two decimals.
+   */
+  function round2(n) {
+    return Math.round(n * 100) / 100;
+  }
+
+  /**
+   * Looks up a card's published annual fee.
+   * @param {string} family Product family (e.g. `Platinum`).
+   * @return {number} Annual fee in USD, or 0 when unknown.
+   */
+  function annualFeeFor(family) {
+    if (!family) return 0;
+    if (ANNUAL_FEES[family] != null) return ANNUAL_FEES[family];
+    const hit = Object.keys(ANNUAL_FEES).find((k) => family.includes(k));
+    return hit ? ANNUAL_FEES[hit] : 0;
+  }
+
+  /**
+   * Reads one card's benefit trackers. The endpoint takes an array with a
+   * single request object and returns an array of `{trackers: [...]}` blocks.
+   * @param {string} token The card's `account_token`.
+   * @return {!Promise<!Array<!Object>>} Raw tracker objects for the card.
+   */
+  async function fetchAccountBenefits(token) {
+    const data = await postJson(READ_BENEFITS_URL,
+      [{accountToken: token, locale: LOCALE, limit: BENEFIT_LIMIT}]);
+    const blocks = Array.isArray(data) ? data : [];
+    return blocks.flatMap((block) => block.trackers || []);
+  }
+
+  /**
+   * Whole days from `now` until an ISO date string (negative once past).
+   * @param {string} dateStr A date the endpoint returns (`periodEndDate`).
+   * @param {number=} now Epoch ms treated as "today"; defaults to real time.
+   * @return {number} Days remaining, or `Infinity` when the date is unparsable.
+   */
+  function daysUntil(dateStr, now = Date.now()) {
+    const end = Date.parse(dateStr);
+    if (Number.isNaN(end)) return Infinity;
+    return Math.ceil((end - now) / 86400000);
+  }
+
+  /**
+   * A human period label for a tracker, from its reset cadence. Uses the span
+   * between period dates (robust to unknown `trackerDuration` enum values),
+   * falling back to the raw duration string.
+   * @param {!Object} tracker Raw tracker object.
+   * @return {string} One of `月` / `季` / `半年` / `年`, or `''`.
+   */
+  function benefitPeriodLabel(tracker) {
+    const start = Date.parse(tracker.periodStartDate);
+    const end = Date.parse(tracker.periodEndDate);
+    if (!Number.isNaN(start) && !Number.isNaN(end)) {
+      const days = Math.round((end - start) / 86400000);
+      if (days <= 45) return '月';
+      if (days <= 135) return '季';
+      if (days <= 250) return '半年';
+      return '年';
     }
-    return cards;
+    const dur = String(tracker.trackerDuration || '').toUpperCase();
+    if (dur.includes('MONTH')) return '月';
+    if (dur.includes('QUARTER')) return '季';
+    if (dur.includes('SEMI') || dur.includes('HALF')) return '半年';
+    if (dur.includes('YEAR') || dur.includes('ANNUAL')) return '年';
+    return '';
+  }
+
+  /**
+   * Normalizes a raw tracker into our benefit shape, tagged with its card.
+   * @param {!Object} tracker Raw tracker object.
+   * @param {!Object} card A snapshot card (`token`, `family`, `digits`, `art`).
+   * @return {!Object} Normalized benefit.
+   */
+  function normalizeBenefit(tracker, card) {
+    const tr = tracker.tracker || {};
+    const target = round2(parseFloat(tr.targetAmount) || 0);
+    const spent = round2(parseFloat(tr.spentAmount) || 0);
+    const remaining = tr.remainingAmount != null ?
+      round2(parseFloat(tr.remainingAmount) || 0) :
+      round2(Math.max(0, target - spent));
+    return {
+      sorBenefitId: tracker.sorBenefitId || tracker.benefitId || '',
+      benefitId: tracker.benefitId || '',
+      name: tracker.benefitName || '',
+      category: tracker.category || '',
+      status: tracker.status || '',
+      period: benefitPeriodLabel(tracker),
+      periodEnd: tracker.periodEndDate || '',
+      symbol: tr.targetCurrencySymbol || '$',
+      target,
+      spent,
+      remaining,
+      token: card.token,
+      family: card.family,
+      digits: card.digits,
+      art: card.art,
+    };
+  }
+
+  /**
+   * A stable grouping key for a benefit, derived from its display name. The
+   * same benefit has a different `sorBenefitId` on each card product, so
+   * grouping by (normalized) name is what merges e.g. the ChatGPT credit across
+   * a Platinum and a Business Gold into one row.
+   * @param {string} name Benefit display name.
+   * @return {string} Normalized key.
+   */
+  function benefitNameKey(name) {
+    return String(name || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  /**
+   * Whether a tracker is a dollar credit we should show (and count in stats).
+   * Excludes `category === "spend"` (spend-to-unlock milestones like Centurion
+   * / Delta Sky Club, whose target is a huge spend goal, not a credit) and
+   * pass-based perks (`targetUnit === "PASSES"`, e.g. lounge visits) that are
+   * not dollar amounts.
+   * @param {!Object} tracker Raw tracker object.
+   * @return {boolean} True for a spendable dollar credit.
+   */
+  function isTrackedCredit(tracker) {
+    const cat = String(tracker.category || '').toLowerCase();
+    const unit = String((tracker.tracker || {}).targetUnit || '').toUpperCase();
+    return cat !== 'spend' && unit !== 'PASSES';
+  }
+
+  /**
+   * Reads a card's benefit catalog (every perk keyed by slug). The body is a
+   * plain object (the array form is rejected). Returns {} on any failure so the
+   * tracker view still works without it.
+   * @param {string} token The card's `account_token`.
+   * @return {!Promise<!Object>} The `benefits` dict, or {} on failure.
+   */
+  async function fetchCardCatalog(token) {
+    try {
+      const data = await postJson(READ_CATALOG_URL,
+        {accountToken: token, locale: LOCALE});
+      return data && data.benefits ? data.benefits : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Strips tags and decodes HTML entities from an API title for plain-text
+   * display (rendered via textContent, so this is for readability, not safety).
+   * @param {string} s Raw title.
+   * @return {string} Decoded plain text.
+   */
+  function decodeHtml(s) {
+    return String(s || '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Extracts the dollar amount from a benefit title (e.g. "$209 CLEAR+ Credit"
+   * → 209), so a not-yet-enrolled benefit can show its credit value.
+   * @param {string} title Benefit title.
+   * @return {number} Parsed amount, or 0.
+   */
+  function parseCreditAmount(title) {
+    const m = /\$([0-9][0-9,]*)/.exec(String(title));
+    return m ? parseFloat(m[1].replace(/,/g, '')) : 0;
+  }
+
+  /**
+   * Builds a benefit entry for a not-yet-enrolled catalog benefit.
+   * @param {!Object} entry Raw catalog benefit.
+   * @param {!Object} card A snapshot card.
+   * @return {!Object} Normalized (not-enrolled) benefit.
+   */
+  function catalogBenefit(entry, card) {
+    const name = decodeHtml(
+      entry.benefitShortTitle || entry.benefitTitle || entry.benefitName || '');
+    const target = parseCreditAmount(name);
+    return {
+      sorBenefitId: entry.sorBenefitId || '',
+      benefitId: entry.sorBenefitId || '',
+      name,
+      category: '',
+      status: 'NOTENROLLED',
+      period: '年',
+      periodEnd: '',
+      symbol: '$',
+      target,
+      spent: 0,
+      remaining: target,
+      token: card.token,
+      family: card.family,
+      digits: card.digits,
+      art: card.art,
+    };
+  }
+
+  /**
+   * Reads benefits for every BASIC (owned) card: the spend trackers plus the
+   * catalog. The catalog supplies cleaner titles (joined by `sorBenefitId`) and
+   * the not-yet-enrolled benefits (`layoutType === 'NOTENROLLED'`) that never
+   * appear as trackers. `onProgress(done, total)` fires per card.
+   * @param {!Array<!Object>} cards Snapshot cards.
+   * @param {function(number, number)=} onProgress Progress callback.
+   * @return {!Promise<!Array<!Object>>} Card-tagged benefits.
+   */
+  async function fetchAllBenefits(cards, onProgress = () => {}) {
+    const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
+    const total = owned.length;
+    onProgress(0, total);
+    // Read cards concurrently but capped; reads within a card stay sequential,
+    // so at most MAX_CONCURRENT_READS requests are in flight at once.
+    let done = 0;
+    const perCard = await mapLimit(owned, MAX_CONCURRENT_READS,
+      async (card) => {
+        const trackers = await fetchAccountBenefits(card.token);
+        const catalog = await fetchCardCatalog(card.token);
+        onProgress(++done, total);
+        return {card, trackers, catalog};
+      });
+    const catalogs = perCard.map(({card, catalog}) => ({card, catalog}));
+    const benefits = [];
+    for (const {card, trackers} of perCard) {
+      for (const t of trackers) {
+        if (isTrackedCredit(t)) benefits.push(normalizeBenefit(t, card));
+      }
+    }
+
+    // Prefer the catalog's clean title where it maps to a tracker (fixes names
+    // like "Congratulations!" that the tracker returns for achieved benefits).
+    const titleBySor = new Map();
+    for (const {catalog} of catalogs) {
+      for (const slug of Object.keys(catalog)) {
+        const c = catalog[slug];
+        if (c.sorBenefitId && c.benefitTitle) {
+          titleBySor.set(c.sorBenefitId, decodeHtml(c.benefitTitle));
+        }
+      }
+    }
+    for (const b of benefits) {
+      const title = titleBySor.get(b.sorBenefitId);
+      if (title) b.name = title;
+    }
+
+    // Add not-yet-enrolled benefits (no tracker on any card) as "去激活" rows,
+    // deduped by name so a benefit enrollable on several cards shows once.
+    const tracked = new Set(benefits.map((b) => benefitNameKey(b.name)));
+    const added = new Set();
+    for (const {card, catalog} of catalogs) {
+      for (const slug of Object.keys(catalog)) {
+        const c = catalog[slug];
+        if (c.layoutType !== 'NOTENROLLED' || !c.isEnrollable) continue;
+        if (!c.sorBenefitId) continue;
+        const b = catalogBenefit(c, card);
+        // Only surface dollar-credit perks (e.g. CLEAR $189), not status/link
+        // benefits like "Link Your Resy Profile" that have no amount.
+        if (b.target <= 0) continue;
+        const nameKey = benefitNameKey(b.name);
+        if (tracked.has(nameKey) || added.has(nameKey)) continue;
+        added.add(nameKey);
+        benefits.push(b);
+      }
+    }
+    return benefits;
+  }
+
+  /**
+   * Finalizes a benefit group: sums amounts across its cards, picks the
+   * soonest period end, and flags multi-card / fully-used.
+   * @param {!Object} group Partial group with `entries`.
+   * @param {number} now Epoch ms treated as "today".
+   * @return {!Object} Finalized group.
+   */
+  function finalizeBenefitGroup(group, now) {
+    const spent = round2(group.entries.reduce((s, e) => s + e.spent, 0));
+    const target = round2(group.entries.reduce((s, e) => s + e.target, 0));
+    const ends = group.entries.map((e) => e.periodEnd).filter(Boolean).sort();
+    const periodEnd = ends[0] || '';
+    return {
+      ...group,
+      spent,
+      target,
+      remaining: round2(Math.max(0, target - spent)),
+      periodEnd,
+      daysLeft: daysUntil(periodEnd, now),
+      multiCard: group.entries.length > 1,
+      fullyUsed: target > 0 && spent >= target,
+      symbol: group.entries[0] ? group.entries[0].symbol : '$',
+    };
+  }
+
+  /**
+   * Groups card-tagged benefits across cards by normalized name (so the same
+   * benefit on different card products merges) and sorts soonest-expiry first.
+   * @param {!Array<!Object>} benefits Card-tagged benefits.
+   * @param {number=} now Epoch ms treated as "today".
+   * @return {!Array<!Object>} Grouped benefits, soonest-to-expire first.
+   */
+  function buildBenefitIndex(benefits, now = Date.now()) {
+    const byKey = new Map();
+    for (const b of benefits) {
+      const key = benefitNameKey(b.name) ||
+          b.sorBenefitId || `${b.token}:${b.benefitId}`;
+      let group = byKey.get(key);
+      if (!group) {
+        group = {key, name: b.name, category: b.category, period: b.period,
+          status: b.status, entries: []};
+        byKey.set(key, group);
+      }
+      group.entries.push(b);
+    }
+    return [...byKey.values()]
+      .map((group) => finalizeBenefitGroup(group, now))
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+  }
+
+  /**
+   * Computes the benefits header stats from grouped benefits.
+   * @param {!Array<!Object>} groups Grouped benefits.
+   * @param {!Array<!Object>} cards Snapshot cards (for annual-fee lookup).
+   * @param {number=} now Epoch ms treated as "today".
+   * @return {{thisMonthUnused: number, redeemedYtd: number,
+   *           annualFee: number, paybackPct: number}} Stats.
+   */
+  function benefitStats(groups, cards, now = Date.now()) {
+    const nowDate = new Date(now);
+    let thisMonthUnused = 0;
+    let redeemedYtd = 0;
+    for (const g of groups) {
+      redeemedYtd += g.spent;
+      const end = new Date(g.periodEnd);
+      if (!Number.isNaN(end.getTime()) &&
+          end.getFullYear() === nowDate.getFullYear() &&
+          end.getMonth() === nowDate.getMonth()) {
+        thisMonthUnused += g.remaining;
+      }
+    }
+    const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
+    const annualFee = owned.reduce((s, c) => s + annualFeeFor(c.family), 0);
+    const paybackPct =
+        annualFee > 0 ? Math.round(redeemedYtd / annualFee * 100) : 0;
+    return {
+      thisMonthUnused: round2(thisMonthUnused),
+      redeemedYtd: round2(redeemedYtd),
+      annualFee,
+      paybackPct,
+    };
   }
 
   /**
@@ -826,9 +1263,20 @@
     fetchEnrolledKeys,
     enrollOffer,
     isEnrollSuccess,
+    mapLimit,
     snapshot,
     executeSelected,
     planRetry,
+    fetchAccountBenefits,
+    fetchCardCatalog,
+    fetchAllBenefits,
+    buildBenefitIndex,
+    benefitStats,
+    annualFeeFor,
+    benefitPeriodLabel,
+    daysUntil,
+    decodeHtml,
+    parseCreditAmount,
     RequestType,
     ResultState,
   };
@@ -870,6 +1318,22 @@
     view: 'list',
     run: null,
     errorMessage: '',
+    // Tasks awaiting the confirm dialog, and the last run's summary strip.
+    pendingTasks: null,
+    lastRun: null,
+    // Which top-level tab is showing: 'offers' or 'benefits'.
+    tab: 'offers',
+    // Benefits tab state (loaded lazily on first switch).
+    benefits: [],
+    benefitStats: null,
+    benefitsLoaded: false,
+    benefitsError: '',
+    benefitsRun: null,
+    benefitsReadAt: 0,
+    benefitsExpanded: new Set(),
+    benefitUnusedOnly: true,
+    benefitDoneOpen: false,
+    benefitQuery: '',
   };
 
   /** Panel host + shadow root, created lazily and reused across opens. */
@@ -879,6 +1343,8 @@
   let launcherButton = null;
   /** Whether the offer snapshot has been loaded at least once. */
   let loaded = false;
+  /** The view key of the last render, to preserve scroll across rebuilds. */
+  let lastViewKey = '';
 
   /**
    * Tiny DOM builder. `props`: `class`/`style`/`text` plus `on*` handlers and
@@ -926,6 +1392,16 @@
     const words = String(name).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/);
     const letters = words.slice(0, 2).map((w) => w[0] || '').join('');
     return (letters || String(name).slice(0, 2)).toUpperCase();
+  }
+
+  /**
+   * Initials for a benefit square, ignoring a leading "$300" so the letters
+   * come from the name ("$300 Digital Entertainment" → "DE", not "3D").
+   * @param {string} name Benefit name.
+   * @return {string} Letter initials.
+   */
+  function benefitInitials(name) {
+    return merchantInitials(String(name).replace(/^\s*\$[\d,]+\s*/, ''));
   }
 
   /** @param {!OfferGroup} g Offer group. @return {string} Short expiry, e.g. */
@@ -985,10 +1461,18 @@
       box-shadow: 0 8px 30px rgba(0,23,90,.18);
     }
     .hd {
-      display: flex; align-items: center; gap: 11px; padding: 14px 18px;
-      background: #fff; border-bottom: 2px solid var(--blue); flex: none;
+      display: flex; flex-direction: column; background: #fff;
+      border-bottom: 2px solid var(--blue); flex: none;
     }
     .hd.err { border-bottom-color: var(--red); }
+    .hd.tabbed { border-bottom: 1px solid var(--line); }
+    .hrow { display: flex; align-items: center; gap: 11px; padding: 14px 18px; }
+    .hd.tabbed .hrow { padding: 14px 18px 12px; }
+    .mtabs { display: flex; gap: 22px; padding: 0 18px; font-size: 12.5px; }
+    .mtab { color: var(--sub); padding-bottom: 10px; cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .mtab.on { font-weight: 700; color: var(--navy);
+      border-bottom-color: var(--blue); }
     .ic {
       width: 30px; height: 30px; border-radius: 5px; background: var(--blue);
       color: #fff; display: flex; align-items: center; justify-content: center;
@@ -1138,6 +1622,116 @@
     .lnk { font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; }
     .lnk.rerun { border: 1px solid var(--red); color: var(--red); border-radius: 4px;
       padding: 8px 16px; font-weight: 700; }
+    /* Benefits tab */
+    .bstats { display: flex; background: #fff;
+      border-bottom: 1px solid var(--line); }
+    .bcol { padding: 13px 0; }
+    .bcol.l { flex: 1.2; padding-left: 18px; }
+    .bcol.m { flex: 1; text-align: center; }
+    .bcol.r { flex: 1.2; padding-right: 18px; text-align: right; }
+    .bval { font-size: 19px; font-weight: 800;
+      font-variant-numeric: tabular-nums; }
+    .bval.navy { color: var(--navy); }
+    .bval.green { color: var(--green); }
+    .bval.ink { color: var(--ink); }
+    .blbl { font-size: 10.5px; color: var(--sub); margin-top: 2px; }
+    .bsub2 { font-size: 9.5px; color: var(--fog); margin-top: 1px; }
+    .vsep { width: 1px; background: var(--line); margin: 12px 0; }
+    .btb { display: flex; align-items: center; padding: 9px 18px; background: #fff;
+      border-bottom: 1px solid var(--line2); font-size: 11.5px; }
+    .btb .sp { flex: 1; }
+    .sortlbl { font-weight: 600; color: var(--ink); cursor: pointer; }
+    .caret { font-size: 10px; color: var(--fog); }
+    .unused { display: flex; align-items: center; gap: 6px; color: var(--sub);
+      cursor: pointer; }
+    .unused input[type=checkbox] { width: 13px; height: 13px; }
+    .blist { display: flex; flex-direction: column; background: #fff; }
+    .brow { display: flex; gap: 11px; padding: 12px 18px; align-items: center;
+      border-bottom: 1px solid var(--line2); }
+    .blogo { width: 40px; height: 40px; border-radius: 4px; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; }
+    .bmn { flex: 1; min-width: 0; }
+    .btitle { display: flex; align-items: baseline; gap: 6px; }
+    .bname { font-size: 13px; font-weight: 700; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bp { font-size: 10px; color: var(--fog); border: 1px solid var(--line);
+      border-radius: 2px; padding: 0 4px; flex: none; }
+    .bx { font-size: 10px; font-weight: 700; color: #005EB0; background: #EAF4FC;
+      border-radius: 2px; padding: 0 5px; flex: none; }
+    .bcard { font-size: 11px; color: var(--mut); margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bbar { height: 3px; border-radius: 1.5px; background: #EDEEF0;
+      margin-top: 6px; overflow: hidden; }
+    .bbar > div { height: 100%; background: var(--green); }
+    .brt { text-align: right; flex: none; }
+    .bamt { font-size: 12.5px; font-weight: 700; color: var(--ink);
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bamt .of { font-size: 10.5px; font-weight: 400; color: var(--fog); }
+    .bdays { font-size: 10.5px; color: var(--fog); margin-top: 2px; }
+    .bdays.urgent { font-weight: 700; color: var(--red); }
+    .bcaret { font-size: 10px; color: var(--blue); flex: none; }
+    .binact { font-size: 11px; font-weight: 700; color: var(--amber); }
+    .bwhen { font-size: 10.5px; color: var(--fog); margin-top: 2px;
+      font-variant-numeric: tabular-nums; }
+    .bactivate { border: 1px solid #D5D7DB; border-radius: 4px;
+      padding: 5px 10px; font-size: 11px; font-weight: 600; color: var(--blue);
+      cursor: pointer; white-space: nowrap; flex: none; }
+    .bgrp { border-bottom: 1px solid var(--line2); }
+    .bgrp.exp { box-shadow: inset 2px 0 0 var(--blue); background: #FBFDFF; }
+    .bgrp > .brow { border-bottom: none; }
+    .bgrp.exp > .brow { padding: 12px 18px 8px 16px; }
+    .bsub { margin: 0 18px 12px 69px; display: flex; flex-direction: column;
+      gap: 8px; }
+    .bsubrow { display: flex; align-items: center; gap: 9px; }
+    .bsubcard { font-size: 11.5px; color: var(--ink); width: 56px; flex: none; }
+    .bbar.grow { flex: 1; margin-top: 0; background: #E4E6E9; }
+    .bsubamt { font-size: 11px; color: var(--sub); width: 74px;
+      text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+    .bsec { display: flex; align-items: center; gap: 8px; padding: 11px 18px;
+      background: #FAFBFC; border-bottom: 1px solid var(--line2); cursor: pointer; }
+    .bsec .sp { flex: 1; }
+    .bsec-t { font-size: 12px; font-weight: 600; color: var(--sub); }
+    .bsec-n { font-size: 11px; color: var(--fog); background: #EDEEF0;
+      border-radius: 9px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
+    .bfoot { border-top: 1px solid var(--line); padding: 10px 18px;
+      background: #fff; flex: none; }
+    /* Last-run strip */
+    .lastrun { display: flex; align-items: center; gap: 5px; padding: 7px 18px;
+      background: #FAFBFC; border-bottom: 1px solid var(--line2);
+      font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
+    .lastrun .sp { flex: 1; }
+    .lastrun .when { color: var(--mut); }
+    /* Confirm dialog */
+    .cfwrap { position: relative; }
+    .cfdim { opacity: .4; pointer-events: none; }
+    .cfsk { padding: 14px 18px; display: flex; flex-direction: column;
+      gap: 12px; background: #fff; }
+    .skrow { display: flex; gap: 11px; align-items: center; }
+    .sklogo { width: 40px; height: 40px; border-radius: 4px; flex: none;
+      background: var(--card); }
+    .skmn { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+    .skl { height: 10px; border-radius: 2px; background: var(--card); }
+    .skl.a { width: 52%; }
+    .skl.b { width: 74%; height: 9px; background: #F7F8F9; }
+    .cfov { position: absolute; inset: 0; background: rgba(0, 23, 90, .30);
+      display: flex; align-items: center; justify-content: center;
+      padding: 26px; }
+    .cfdlg { background: #fff; border-radius: 6px; width: 100%; padding: 20px;
+      box-shadow: 0 12px 32px rgba(0, 23, 90, .35); }
+    .cf-t { font-size: 14px; font-weight: 800; color: var(--navy); }
+    .cf-d { font-size: 12px; color: var(--sub); line-height: 1.6;
+      margin-top: 7px; }
+    .cf-d b { color: var(--ink); }
+    .cf-sum { margin-top: 10px; background: #F7F8F9; border: 1px solid #EDEEF0;
+      border-radius: 4px; padding: 9px 12px; font-size: 11.5px;
+      color: var(--sub); line-height: 1.7; font-variant-numeric: tabular-nums; }
+    .cf-btns { display: flex; gap: 10px; margin-top: 16px;
+      justify-content: flex-end; }
+    .cf-cancel { border: 1px solid #D5D7DB; color: var(--sub); font-size: 12.5px;
+      font-weight: 600; border-radius: 4px; padding: 9px 18px; cursor: pointer; }
+    .cf-ok { background: var(--blue); color: #fff; font-size: 12.5px;
+      font-weight: 700; border-radius: 4px; padding: 9px 18px; cursor: pointer; }
   `;
 
   /**
@@ -1216,17 +1810,17 @@
     const rt = el('div', {class: 'rt'});
     if (fullyAdded) {
       rt.append(el('div', {class: 'done-tag',
-        text: `${group.cards.length} 张卡都已加`}));
+        text: `已加全部 ${group.cards.length} 卡`}));
     } else {
       const badge = el('div', {class: 'bd'});
       if (addedCount) {
         badge.append(
-          el('span', {text: `可加 ${addable.length} 张`}),
+          el('span', {text: `可加 ${addable.length}`}),
           el('span', {class: 'dot', text: ' · '}),
-          el('span', {class: 'en', text: `已加 ${addedCount} 张`}),
+          el('span', {class: 'en', text: `已加 ${addedCount}`}),
           el('span', {class: 'car', text: ' ▾'}));
       } else {
-        badge.append(el('span', {text: `可加 ${addable.length} 张`}),
+        badge.append(el('span', {text: `可加 ${addable.length}`}),
           el('span', {class: 'car', text: ' ▾'}));
       }
       badge.onclick = () => toggleExpand(wrap, box, badge, group);
@@ -1348,36 +1942,126 @@
    * @return {!Element} The header element.
    */
   function renderHeader(opts) {
-    const hd = el('div', {class: opts.err ? 'hd err' : 'hd'});
-    hd.append(el('div', {class: 'ic'}, opts.glyph));
-    hd.append(el('div', {class: 'tt'},
+    let cls = 'hd';
+    if (opts.err) cls += ' err';
+    if (opts.tabs) cls += ' tabbed';
+    const hd = el('div', {class: cls});
+    const row = el('div', {class: 'hrow'});
+    row.append(el('div', {class: 'ic'}, opts.glyph));
+    row.append(el('div', {class: 'tt'},
       el('div', {class: 't1', text: opts.title}),
       opts.subtitle ? el('div', {class: 't2', text: opts.subtitle}) : null));
-    if (opts.right) hd.append(opts.right);
+    if (opts.right) row.append(opts.right);
     if (opts.refresh) {
       const rf = el('button', {class: 'rf', title: '刷新',
-        onclick: () => refresh()});
+        onclick: opts.onRefresh || (() => refresh())});
       // Static author-controlled markup (no interpolation): safe to inline.
       rf.innerHTML = REFRESH_SVG;
-      hd.append(rf);
+      row.append(rf);
     }
     if (opts.close) {
-      hd.append(el('button', {class: 'cl', title: '关闭', text: '×',
+      row.append(el('button', {class: 'cl', title: '关闭', text: '×',
         onclick: () => hidePanel()}));
     }
+    hd.append(row);
+    if (opts.tabs) hd.append(renderMainTabs());
     return hd;
+  }
+
+  /** @return {!Element} The Offers | Benefits tab row. */
+  function renderMainTabs() {
+    const mk = (key, label) => {
+      const tab = el('div',
+        {class: state.tab === key ? 'mtab on' : 'mtab', text: label});
+      tab.onclick = () => switchTab(key);
+      return tab;
+    };
+    return el('div', {class: 'mtabs'},
+      mk('offers', 'Offers'), mk('benefits', 'Benefits'));
+  }
+
+  /**
+   * Switches the top-level tab, lazily loading benefits the first time.
+   * @param {string} tab `'offers'` or `'benefits'`.
+   */
+  function switchTab(tab) {
+    if (state.tab === tab) return;
+    state.tab = tab;
+    if (tab === 'benefits' && !state.benefitsLoaded && !state.benefitsError) {
+      loadBenefits();
+      return;
+    }
+    render();
   }
 
   /** Rebuilds the whole panel for the current `state.view`. */
   function render() {
     if (!panelRoot) return;
-    const root = panelRoot;
-    root.getElementById('shell').textContent = '';
-    const shell = root.getElementById('shell');
-    const views = {list: renderListView, loading: renderLoadingView,
-      running: renderRunningView, result: renderResultView,
-      empty: renderEmptyView, error: renderErrorView};
-    (views[state.view] || renderListView)(shell);
+    const shell = panelRoot.getElementById('shell');
+    // Preserve the scroll position across a same-view rebuild (e.g. expanding a
+    // row or toggling a filter), so the list doesn't jump back to the top.
+    const viewKey = state.tab === 'benefits' ? 'benefits' : state.view;
+    const oldBody = shell.querySelector('.body');
+    const keepScroll =
+        oldBody && viewKey === lastViewKey ? oldBody.scrollTop : 0;
+    lastViewKey = viewKey;
+    shell.textContent = '';
+    if (state.tab === 'benefits') {
+      renderBenefitsTab(shell);
+    } else {
+      const views = {list: renderListView, loading: renderLoadingView,
+        running: renderRunningView, result: renderResultView,
+        empty: renderEmptyView, error: renderErrorView,
+        confirm: renderConfirmView};
+      (views[state.view] || renderListView)(shell);
+    }
+    const newBody = shell.querySelector('.body');
+    if (newBody && keepScroll) newBody.scrollTop = keepScroll;
+  }
+
+  /**
+   * Reads benefits for every card and builds the aggregated view. Cached so
+   * re-opening the tab is instant; `force` re-reads from Amex.
+   * @param {boolean=} force Re-read even if already loaded.
+   * @return {!Promise<void>} Resolves when rendered.
+   */
+  async function loadBenefits(force = false) {
+    if (state.benefitsLoaded && !force) {
+      render();
+      return;
+    }
+    state.benefitsError = '';
+    state.benefitsLoaded = false;
+    const owned = state.cards.filter(
+      (c) => (c.relationship || 'BASIC') === 'BASIC');
+    state.benefitsRun = {done: 0, total: owned.length};
+    render();
+    try {
+      const benefits = await fetchAllBenefits(state.cards, (done, total) => {
+        state.benefitsRun = {done, total};
+        if (state.tab === 'benefits' && !state.benefitsLoaded) render();
+      });
+      state.benefits = buildBenefitIndex(benefits);
+      state.benefitStats = benefitStats(state.benefits, state.cards);
+      state.benefitsReadAt = Date.now();
+      state.benefitsLoaded = true;
+    } catch (error) {
+      state.benefitsError = error.message || '读取失败';
+    }
+    render();
+  }
+
+  /**
+   * A short relative-time label, e.g. `刚刚` / `3 分钟前`.
+   * @param {number} ts Epoch ms.
+   * @return {string} Relative label.
+   */
+  function agoLabel(ts) {
+    if (!ts) return '';
+    const mins = Math.floor((Date.now() - ts) / 60000);
+    if (mins < 1) return '刚刚读取';
+    if (mins < 60) return `${mins} 分钟前读取`;
+    return `${Math.floor(mins / 60)} 小时前读取`;
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -1385,7 +2069,7 @@
     shell.append(renderHeader({
       glyph: '＋', title: 'Amex 助手',
       subtitle: `${state.offers.length} 个 offer · ${state.cards.length} 张卡`,
-      refresh: true, close: true,
+      refresh: true, close: true, tabs: true,
     }));
 
     const body = el('div', {class: 'body'});
@@ -1424,14 +2108,16 @@
       state.multiOnly = multi.checked;
       renderRows(body);
     };
-    tb.append(el('label', {}, multi, '只看能加多张卡的'),
+    tb.append(el('label', {}, multi, '只看多卡可加'),
       el('div', {class: 'sp'}),
       el('div', {class: 'ac'},
-        el('a', {class: 'a-blue', text: '全选当前可加',
+        el('a', {class: 'a-blue', text: '全选可加',
           onclick: () => selectAllVisible(body)}),
-        el('a', {class: 'a-mut', text: '清空选择',
+        el('a', {class: 'a-mut', text: '清空',
           onclick: () => clearSelection(body)})));
     body.append(tb);
+
+    if (state.lastRun) body.append(renderLastRunStrip());
 
     const list = el('div', {class: 'list', id: 'list'});
     body.append(list);
@@ -1439,6 +2125,41 @@
     renderRows(body);
 
     shell.append(renderFooter());
+  }
+
+  /** @return {!Element} The "上次执行" summary strip. */
+  function renderLastRunStrip() {
+    const r = state.lastRun;
+    const strip = el('div', {class: 'lastrun'});
+    strip.append(document.createTextNode('上次执行：'));
+    strip.append(el('b', {class: 'g', text: `${r.confirmed} 确认已加`}));
+    strip.append(document.createTextNode(' · '));
+    strip.append(el('b', {class: 'r', text: `${r.failed} 失败`}));
+    strip.append(document.createTextNode(' · '));
+    strip.append(el('b', {class: 'am', text: `${r.dedupe} 疑似去重`}));
+    strip.append(el('span', {class: 'when', text: ` · ${whenLabel(r.at)}`}));
+    strip.append(el('div', {class: 'sp'}));
+    strip.append(el('span', {class: 'lnk', text: '查看', onclick: () => {
+      state.view = 'result';
+      render();
+    }}));
+    return strip;
+  }
+
+  /**
+   * A short clock label: `今天 14:32` / `昨天 14:32` / `7/4 14:32`.
+   * @param {number} ts Epoch ms.
+   * @return {string} Label.
+   */
+  function whenLabel(ts) {
+    const d = new Date(ts);
+    const hm = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const today = new Date();
+    const sameDay = (a, b) => a.toDateString() === b.toDateString();
+    const yest = new Date(today.getTime() - 86400000);
+    if (sameDay(d, today)) return `今天 ${hm}`;
+    if (sameDay(d, yest)) return `昨天 ${hm}`;
+    return `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
   }
 
   /** @param {!Element} body Panel body (contains #list). */
@@ -1477,6 +2198,308 @@
       el('b', {text: String(pairs)}),
       document.createTextNode(' 次 Add to Card'));
     go.disabled = pairs === 0;
+  }
+
+  // ---- Benefits tab (3a) ---------------------------------------------------
+
+  /**
+   * Formats a currency amount, dropping `.00` on whole dollars.
+   * @param {number} n Amount.
+   * @param {string=} symbol Currency symbol.
+   * @return {string} e.g. `$412` or `$28.56`.
+   */
+  function fmtMoney(n, symbol = '$') {
+    const v = Number(n) || 0;
+    return v % 1 === 0 ? `${symbol}${v}` : `${symbol}${v.toFixed(2)}`;
+  }
+
+  /** @param {number} d Days left. @return {string} e.g. `还剩 5 天`. */
+  function daysLabel(d) {
+    if (!Number.isFinite(d)) return '';
+    if (d < 0) return '已过期';
+    return `还剩 ${d} 天`;
+  }
+
+  /**
+   * Whether a benefit is available but not yet activated (e.g. CLEAR Plus),
+   * so it shows a "去激活" prompt instead of a progress bar. Best-effort on the
+   * tracker `status`; unknown/active statuses fall through to a normal row.
+   * @param {!Object} group A benefit group.
+   * @return {boolean} True when the benefit needs activation.
+   */
+  function isInactiveBenefit(group) {
+    return /AVAILABLE|INACTIVE|NOT[_ ]?ENROLLED|ELIGIBLE[_ ]?TO/i
+      .test(group.status || '');
+  }
+
+  /** @param {!Object} extra Header overrides. @return {!Object} Header opts. */
+  function benefitsHeaderOpts(extra) {
+    const owned = state.cards.filter(
+      (c) => (c.relationship || 'BASIC') === 'BASIC').length;
+    const parts = [`${owned} Cards`];
+    const ago = agoLabel(state.benefitsReadAt);
+    if (ago) parts.push(ago);
+    return {glyph: '＋', title: 'Amex 助手', subtitle: parts.join(' · '),
+      close: true, tabs: true, ...extra};
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsTab(shell) {
+    if (state.benefitsError) return renderBenefitsError(shell);
+    if (!state.benefitsLoaded) return renderBenefitsLoading(shell);
+    renderBenefitsList(shell);
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsLoading(shell) {
+    shell.append(renderHeader(benefitsHeaderOpts({})));
+    const pr = state.benefitsRun || {done: 0, total: 0};
+    const known = pr.total > 0;
+    const pct = known ? Math.round(pr.done / pr.total * 100) : 8;
+    const body = el('div', {class: 'body', style: 'padding:20px 18px'});
+    const rowStyle = 'display:flex;justify-content:space-between;' +
+        'align-items:baseline;margin-bottom:8px';
+    body.append(el('div', {style: rowStyle},
+      el('div', {style: 'font-size:13px;font-weight:700',
+        text: '正在读取每张卡的 benefits…'}),
+      el('div', {class: 'note',
+        text: known ? `第 ${pr.done} / ${pr.total} 张卡` :
+          '正在读取卡列表…'})));
+    body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
+      el('div', {style: `width:${pct}%`})));
+    body.append(el('div', {class: 'note', text: '纯只读，不会改动账户'}));
+    shell.append(body);
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsError(shell) {
+    shell.append(renderHeader(benefitsHeaderOpts({})));
+    const body = el('div', {class: 'body'});
+    const msg = el('div', {class: 'msg'});
+    msg.append(el('div', {class: 'cir bad', text: '!'}));
+    msg.append(el('div', {class: 'h', text: '读取失败'}));
+    msg.append(el('div', {class: 'txt',
+      text: '登录态可能已过期。请先在本页登录 Amex，再重试。'}));
+    msg.append(el('div', {class: 'btn pri', text: '重试',
+      onclick: () => loadBenefits(true)}));
+    body.append(msg);
+    shell.append(body);
+  }
+
+  /**
+   * @param {!Object} group A benefit group.
+   * @param {string} q Lowercased search query.
+   * @return {boolean} Whether the benefit matches by name or card.
+   */
+  function matchesBenefitQuery(group, q) {
+    if (!q) return true;
+    if (group.name.toLowerCase().includes(q)) return true;
+    return group.entries.some(
+      (e) => `${e.family} …${e.digits}`.toLowerCase().includes(q));
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderBenefitsList(shell) {
+    shell.append(renderHeader(benefitsHeaderOpts({
+      refresh: true, onRefresh: () => loadBenefits(true)})));
+    const body = el('div', {class: 'body'});
+
+    const search = el('input', {type: 'search', value: state.benefitQuery,
+      placeholder: '搜索 benefit 或卡'});
+    search.oninput = (e) => {
+      state.benefitQuery = e.target.value;
+      renderBenefitBody(body);
+    };
+    body.append(el('div', {class: 'sr'}, search));
+
+    body.append(renderBenefitStats());
+
+    const tb = el('div', {class: 'btb'});
+    tb.append(el('div', {class: 'sortlbl'}, '按到期排序 ',
+      el('span', {class: 'caret', text: '▾'})));
+    tb.append(el('div', {class: 'sp'}));
+    const un = el('input', {type: 'checkbox'});
+    un.checked = state.benefitUnusedOnly;
+    un.onchange = () => {
+      state.benefitUnusedOnly = un.checked;
+      renderBenefitBody(body);
+    };
+    tb.append(el('label', {class: 'unused'}, un, '只看未用完'));
+    body.append(tb);
+
+    body.append(el('div', {id: 'bbody'}));
+    shell.append(body);
+    renderBenefitBody(body);
+
+    shell.append(el('div', {class: 'bfoot'},
+      el('div', {class: 'note',
+        text: '进度来自 Amex 的额度追踪 · 纯只读，不在本地存任何数据'})));
+  }
+
+  /**
+   * Renders the filtered benefit list into `#bbody` (without touching the
+   * search box / stats / toolbar), so typing in search keeps focus.
+   * @param {!Element} body The benefits body element.
+   */
+  function renderBenefitBody(body) {
+    const bbody = body.querySelector('#bbody');
+    if (!bbody) return;
+    bbody.textContent = '';
+    const q = state.benefitQuery.trim().toLowerCase();
+    const match = (g) => matchesBenefitQuery(g, q);
+    const active = state.benefits.filter((g) => !g.fullyUsed && match(g));
+    const used = state.benefits.filter((g) => g.fullyUsed && match(g));
+    const shown = state.benefitUnusedOnly ? active :
+      state.benefits.filter(match);
+    const list = el('div', {class: 'blist'});
+    for (const g of shown) list.append(renderBenefitRow(g));
+    if (shown.length === 0) {
+      const text = q ? `没有匹配「${state.benefitQuery.trim()}」的 benefit` :
+        '这些卡上没有可追踪的 benefit';
+      list.append(el('div', {class: 'msg', style: 'padding:24px'},
+        el('div', {class: 'note', text})));
+    }
+    bbody.append(list);
+
+    if (state.benefitUnusedOnly && used.length) {
+      bbody.append(renderBenefitDoneSection(used));
+    }
+  }
+
+  /** @return {!Element} The three-stat header bar. */
+  function renderBenefitStats() {
+    const s = state.benefitStats ||
+        {thisMonthUnused: 0, redeemedYtd: 0, annualFee: 0, paybackPct: 0};
+    const col = (cls, value, valCls, label, sub) => {
+      const c = el('div', {class: `bcol ${cls}`});
+      c.append(el('div', {class: `bval ${valCls}`, text: value}));
+      c.append(el('div', {class: 'blbl', text: label}));
+      if (sub) c.append(el('div', {class: 'bsub2', text: sub}));
+      return c;
+    };
+    const feeCol = s.annualFee > 0 ?
+      col('r', `${s.paybackPct}%`, 'ink',
+        `年费回本 ${fmtMoney(s.redeemedYtd)}/${fmtMoney(s.annualFee)}`,
+        '仅含可自动追踪的项目') :
+      col('r', fmtMoney(s.redeemedYtd), 'ink', '今年已用回', '按可追踪项目');
+    return el('div', {class: 'bstats'},
+      col('l', fmtMoney(s.thisMonthUnused), 'navy', '本月还没用的'),
+      el('div', {class: 'vsep'}),
+      col('m', fmtMoney(s.redeemedYtd), 'green', '今年已用回'),
+      el('div', {class: 'vsep'}),
+      feeCol);
+  }
+
+  /**
+   * @param {!Array<!Object>} used Fully-used benefit groups.
+   * @return {!Element} The collapsible "已用完" section.
+   */
+  function renderBenefitDoneSection(used) {
+    const wrap = el('div', {class: 'bdone'});
+    const head = el('div', {class: 'bsec'});
+    head.append(el('span', {class: 'bsec-t', text: '已用完 · 本周期'}));
+    head.append(el('span', {class: 'bsec-n', text: String(used.length)}));
+    head.append(el('div', {class: 'sp'}));
+    head.append(el('span', {class: 'caret',
+      text: state.benefitDoneOpen ? '▴' : '▾'}));
+    head.onclick = () => {
+      state.benefitDoneOpen = !state.benefitDoneOpen;
+      render();
+    };
+    wrap.append(head);
+    if (state.benefitDoneOpen) {
+      for (const g of used) wrap.append(renderBenefitRow(g));
+    }
+    return wrap;
+  }
+
+  /**
+   * @param {!Object} group A benefit group.
+   * @return {!Element} One benefit row (expandable when multi-card).
+   */
+  function renderBenefitRow(group) {
+    const [bg, fg] = logoColors(group.name);
+    const logo = el('div', {class: 'blogo',
+      style: `background:${bg};color:${fg}`,
+      text: benefitInitials(group.name)});
+    const title = el('div', {class: 'btitle'},
+      el('span', {class: 'bname', text: group.name}));
+    if (group.period) {
+      title.append(el('span', {class: 'bp', text: group.period}));
+    }
+    if (group.multiCard) {
+      title.append(el('span', {class: 'bx',
+        text: `×${group.entries.length} 张卡`}));
+    }
+    const cardText = group.entries
+      .map((e) => `${e.family} …${e.digits}`).join(' · ');
+    const mn = el('div', {class: 'bmn'}, title,
+      el('div', {class: 'bcard', text: cardText}));
+
+    // Not-yet-activated benefit (e.g. CLEAR Plus): no progress, a "去激活" CTA.
+    if (isInactiveBenefit(group)) {
+      const rt = el('div', {class: 'brt'},
+        el('div', {class: 'binact', text: '未激活'}),
+        el('div', {class: 'bwhen',
+          text: `${fmtMoney(group.target, group.symbol)} / ` +
+            `${group.period || '年'}`}));
+      const btn = el('div', {class: 'bactivate', text: '去激活 ↗',
+        onclick: () => window.open(
+          'https://global.americanexpress.com/card-benefits/view-all',
+          '_blank')});
+      return el('div', {class: 'brow'}, logo, mn, rt, btn);
+    }
+
+    // Inline aggregate progress bar on every credit row (single and multi).
+    const pct = group.target > 0 ?
+      Math.min(100, Math.round(group.spent / group.target * 100)) : 0;
+    mn.append(el('div', {class: 'bbar'}, el('div', {style: `width:${pct}%`})));
+
+    const urgent = Number.isFinite(group.daysLeft) && group.daysLeft <= 7;
+    const rt = el('div', {class: 'brt'},
+      el('div', {class: 'bamt'},
+        `${fmtMoney(group.spent, group.symbol)} `,
+        el('span', {class: 'of',
+          text: `/ ${fmtMoney(group.target, group.symbol)}`})),
+      el('div', {class: urgent ? 'bdays urgent' : 'bdays',
+        text: daysLabel(group.daysLeft)}));
+
+    // Every credit row is expandable (consistency) — reveals the per-card
+    // breakdown with card-art thumbnails.
+    const expanded = state.benefitsExpanded.has(group.key);
+    const row = el('div', {class: 'brow'}, logo, mn, rt,
+      el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
+    const wrap = el('div', {class: expanded ? 'bgrp exp' : 'bgrp'});
+    row.onclick = () => {
+      if (expanded) state.benefitsExpanded.delete(group.key);
+      else state.benefitsExpanded.add(group.key);
+      render();
+    };
+    wrap.append(row);
+    if (expanded) wrap.append(renderBenefitBreakdown(group));
+    return wrap;
+  }
+
+  /**
+   * @param {!Object} group A benefit group.
+   * @return {!Element} Per-card breakdown rows (card-art thumbnail + progress).
+   */
+  function renderBenefitBreakdown(group) {
+    const box = el('div', {class: 'bsub'});
+    for (const e of group.entries) {
+      const pct = e.target > 0 ?
+        Math.min(100, Math.round(e.spent / e.target * 100)) : 0;
+      const sw = el('span', {class: 'sw'});
+      if (e.art) sw.append(el('img', {src: e.art, alt: ''}));
+      else sw.style.background = swatchStyle(e.token);
+      box.append(el('div', {class: 'bsubrow'}, sw,
+        el('span', {class: 'bsubcard', text: `…${e.digits}`}),
+        el('div', {class: 'bbar grow'}, el('div', {style: `width:${pct}%`})),
+        el('span', {class: 'bsubamt',
+          text: `${fmtMoney(e.spent, e.symbol)} / ` +
+            `${fmtMoney(e.target, e.symbol)}`})));
+    }
+    return box;
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -1646,9 +2669,53 @@
     return row;
   }
 
+  /** @return {!Element} A gray placeholder row (loading / dimmed backdrop). */
+  function skeletonRow() {
+    return el('div', {class: 'skrow'},
+      el('div', {class: 'sklogo'}),
+      el('div', {class: 'skmn'},
+        el('div', {class: 'skl a'}), el('div', {class: 'skl b'})));
+  }
+
+  /** @param {!Element} shell Panel content root (pre-submit confirm dialog). */
+  function renderConfirmView(shell) {
+    const tasks = state.pendingTasks || [];
+    const byOffer = new Map();
+    for (const t of tasks) byOffer.set(t.name, (byOffer.get(t.name) || 0) + 1);
+
+    const wrap = el('div', {class: 'cfwrap'});
+    const dim = el('div', {class: 'cfdim'});
+    dim.append(renderHeader({glyph: '＋', title: 'Amex 助手'}));
+    const sk = el('div', {class: 'cfsk'});
+    for (let i = 0; i < 4; i++) sk.append(skeletonRow());
+    dim.append(sk);
+    wrap.append(dim);
+
+    const dlg = el('div', {class: 'cfdlg'});
+    dlg.append(el('div', {class: 'cf-t',
+      text: `同时提交 ${tasks.length} 个添加？`}));
+    dlg.append(el('div', {class: 'cf-d'},
+      `已选 ${byOffer.size} 个 offer，共 ${tasks.length} 个 offer×卡，会`,
+      el('b', {text: '一次性同时提交'}),
+      '，提交后不可撤销。完成后会重新读取已加列表，逐卡确认。'));
+    const sum = el('div', {class: 'cf-sum'});
+    for (const [name, n] of byOffer) {
+      sum.append(el('div', {text: `${name} → ${n} 张卡`}));
+    }
+    dlg.append(sum);
+    dlg.append(el('div', {class: 'cf-btns'},
+      el('div', {class: 'cf-cancel', text: '取消',
+        onclick: () => cancelConfirm()}),
+      el('div', {class: 'cf-ok', text: '确认提交',
+        onclick: () => confirmRun()})));
+    wrap.append(el('div', {class: 'cfov'}, dlg));
+    shell.append(wrap);
+  }
+
   /** @param {!Element} shell Panel content root. */
   function renderEmptyView(shell) {
-    shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true}));
+    shell.append(renderHeader({glyph: '＋', title: 'Amex 助手', close: true,
+      refresh: true, tabs: true}));
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
       el('div', {class: 'cir ok', text: '✓'}),
       el('div', {class: 'h', text: '暂无可加的 offer'}),
@@ -1720,7 +2787,34 @@
   async function runSelected(presetTasks) {
     const tasks = presetTasks || buildTasks();
     if (tasks.length === 0) return;
+    if (presetTasks) return doRun(tasks, true);
+    // A fresh submit goes through the confirm dialog first.
+    state.pendingTasks = tasks;
+    state.view = 'confirm';
+    render();
+  }
 
+  /** Confirms the pending submit and runs it. */
+  function confirmRun() {
+    const tasks = state.pendingTasks;
+    state.pendingTasks = null;
+    if (tasks && tasks.length) doRun(tasks, false);
+  }
+
+  /** Cancels the confirm dialog and returns to the list. */
+  function cancelConfirm() {
+    state.pendingTasks = null;
+    state.view = 'list';
+    render();
+  }
+
+  /**
+   * Runs a task list, driving the running → result views.
+   * @param {!Array<!Task>} tasks Tasks to submit.
+   * @param {boolean} isRetry Whether these are re-sent failed pairs.
+   * @return {!Promise<void>} Resolves when the result view is shown.
+   */
+  async function doRun(tasks, isRetry) {
     state.view = 'running';
     state.run = {tasks, total: tasks.length, results: []};
     render();
@@ -1733,7 +2827,7 @@
       });
       // A retry merges over the previous report so pairs settled earlier
       // (verified, landed, gone) stay visible; a fresh run starts clean.
-      const merged = presetTasks ? state.lastResults : new Map();
+      const merged = isRetry ? state.lastResults : new Map();
       for (const r of results) merged.set(`${r.key}|${r.token}`, r);
       state.lastResults = merged;
       state.selected.clear();
@@ -1747,12 +2841,25 @@
           state.offers = buildOfferIndex(state.cards);
         } catch { /* keep previous list; result view still shows outcomes */ }
       }
+      setLastRunSummary();
       state.view = 'result';
     } catch (error) {
       state.errorMessage = `添加过程中断：${error.message}`;
       state.view = 'error';
     }
     render();
+  }
+
+  /** Records a compact summary of the last run for the list-view strip. */
+  function setLastRunSummary() {
+    const vals = [...state.lastResults.values()];
+    const count = (s) => vals.filter((r) => r.state === s).length;
+    state.lastRun = {
+      confirmed: count(ResultState.VERIFIED),
+      failed: count(ResultState.FAILED),
+      dedupe: count(ResultState.GHOST),
+      at: Date.now(),
+    };
   }
 
   /**
