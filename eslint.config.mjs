@@ -52,6 +52,7 @@ export default [
         document: 'readonly',
         fetch: 'readonly',
         setTimeout: 'readonly',
+        requestAnimationFrame: 'readonly',
         console: 'readonly',
         URL: 'readonly',
         Blob: 'readonly',

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.16.0
+// @version      0.17.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -1459,14 +1459,20 @@
       border-radius: 6px; width: 400px; max-height: 80vh; display: flex;
       flex-direction: column; overflow: hidden;
       box-shadow: 0 8px 30px rgba(0,23,90,.18);
+      transform-origin: top right;
+      transition: opacity .18s ease, transform .18s ease;
     }
+    /* Collapsed state used to grow-in on open and shrink-out on close. */
+    .p.closing { opacity: 0; transform: scale(.9); }
     .hd {
       display: flex; flex-direction: column; background: #fff;
       border-bottom: 2px solid var(--blue); flex: none;
     }
     .hd.err { border-bottom-color: var(--red); }
     .hd.tabbed { border-bottom: 1px solid var(--line); }
-    .hrow { display: flex; align-items: center; gap: 11px; padding: 14px 18px; }
+    /* Drag handle: the title row moves the panel; its buttons keep pointer. */
+    .hrow { display: flex; align-items: center; gap: 11px; padding: 14px 18px;
+      cursor: move; user-select: none; }
     .hd.tabbed .hrow { padding: 14px 18px 12px; }
     .mtabs { display: flex; gap: 22px; padding: 0 18px; font-size: 12.5px; }
     .mtab { color: var(--sub); padding-bottom: 10px; cursor: pointer;
@@ -2902,6 +2908,108 @@
 
   // ---- panel shell / lifecycle ---------------------------------------------
 
+  /**
+   * Makes a fixed-positioned host draggable. Clamps to the viewport; the host's
+   * own inline style remembers where it was left. A press that doesn't move
+   * counts as a click (for the launcher).
+   * @param {!Element} host The fixed element to move.
+   * @param {!EventTarget} listenOn Where to listen (element or shadow root).
+   * @param {{only: (string|undefined), ignore: (string|undefined),
+   *          onClick: (function(!Event)|undefined),
+   *          onMove: (function()|undefined)}=} opts Behavior.
+   */
+  function makeDraggable(host, listenOn, opts = {}) {
+    listenOn.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (opts.only && !e.target.closest(opts.only)) return;
+      if (opts.ignore && e.target.closest(opts.ignore)) return;
+      const rect = host.getBoundingClientRect();
+      const offX = e.clientX - rect.left;
+      const offY = e.clientY - rect.top;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      let moved = false;
+      const move = (ev) => {
+        if (Math.abs(ev.clientX - startX) +
+            Math.abs(ev.clientY - startY) > 4) {
+          moved = true;
+          if (opts.onMove) opts.onMove();
+        }
+        const maxX = window.innerWidth - host.offsetWidth - 4;
+        const maxY = window.innerHeight - host.offsetHeight - 4;
+        const x = Math.max(4, Math.min(ev.clientX - offX, maxX));
+        const y = Math.max(4, Math.min(ev.clientY - offY, maxY));
+        host.style.left = `${x}px`;
+        host.style.top = `${y}px`;
+        host.style.right = 'auto';
+      };
+      const up = (ev) => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        if (!moved && opts.onClick) opts.onClick(ev);
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+      e.preventDefault();
+    });
+  }
+
+  /** @return {?Element} The panel shell (`.p`), if created. */
+  function panelShell() {
+    return panelRoot ? panelRoot.getElementById('shell') : null;
+  }
+
+  /** Grows the panel in from its collapsed state. */
+  function animatePanelIn() {
+    const p = panelShell();
+    if (!p) return;
+    p.classList.add('closing');
+    void p.offsetWidth; // reflow so removing the class transitions
+    p.classList.remove('closing');
+  }
+
+  /**
+   * Shrinks the panel out, then runs `done` once.
+   * @param {function()} done Called after the shrink finishes.
+   */
+  function animatePanelOut(done) {
+    const p = panelShell();
+    if (!p) {
+      done();
+      return;
+    }
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      done();
+    };
+    p.addEventListener('transitionend', finish, {once: true});
+    setTimeout(finish, 260);
+    requestAnimationFrame(() => p.classList.add('closing'));
+  }
+
+  /**
+   * Fades the launcher pill in or out.
+   * @param {boolean} show Fade in (true) or out then hide (false).
+   */
+  function fadeLauncher(show) {
+    if (!launcherButton) return;
+    const pill = launcherButton.shadowRoot.querySelector('.l');
+    if (!pill) return;
+    if (show) {
+      launcherButton.style.display = '';
+      pill.classList.add('closed');
+      void pill.offsetWidth;
+      pill.classList.remove('closed');
+    } else {
+      pill.classList.add('closed');
+      setTimeout(() => {
+        if (launcherButton) launcherButton.style.display = 'none';
+      }, 150);
+    }
+  }
+
   /** @return {!ShadowRoot} Creates the panel host + shadow root. */
   function createPanel() {
     const host = el('div', {style:
@@ -2912,6 +3020,8 @@
     panelRoot = root;
     root.append(el('style', {text: PANEL_STYLE}));
     root.append(el('div', {class: 'p', id: 'shell'}));
+    // Drag the panel by its title row; buttons/tabs keep their own clicks.
+    makeDraggable(host, root, {only: '.hrow', ignore: 'button, .rf, .cl'});
     return root;
   }
 
@@ -2942,16 +3052,19 @@
 
   /** Shows the panel, creating and loading it only on first use. */
   function showPanel() {
-    if (launcherButton) launcherButton.style.display = 'none';
     if (!panelHost) createPanel();
+    fadeLauncher(false);
     panelHost.style.display = '';
     if (!loaded) refresh(); else render();
+    animatePanelIn();
   }
 
   /** Hides the panel (keeps cached state) and restores the launcher. */
   function hidePanel() {
-    if (panelHost) panelHost.style.display = 'none';
-    if (launcherButton) launcherButton.style.display = '';
+    animatePanelOut(() => {
+      if (panelHost) panelHost.style.display = 'none';
+      fadeLauncher(true);
+    });
   }
 
   /** Installs the launch pill. Nothing hits the account until opened. */
@@ -2965,20 +3078,30 @@
         border-radius:6px 0 0 6px; padding:10px 16px 10px 12px;
         box-shadow:0 3px 12px rgba(0,23,90,.14); cursor:pointer;
         font:12.5px 'Helvetica Neue',Helvetica,system-ui,sans-serif;
-        transition:box-shadow .15s ease }
+        user-select:none;
+        transition:box-shadow .15s ease, opacity .14s ease, transform .14s ease }
       .l:hover { box-shadow:0 5px 18px rgba(0,23,90,.22) }
+      .l.closed { opacity:0; transform:scale(.85) translateX(10px);
+        pointer-events:none }
+      /* Once dragged off the edge it becomes a normal free-floating pill. */
+      .l.float { border-right:1px solid #E3E5E8; border-radius:6px }
       .i { width:24px; height:24px; border-radius:4px; background:#006FCF;
         color:#fff; display:flex; align-items:center; justify-content:center;
         font-size:15px; font-weight:600; line-height:1 }
       .t { font-weight:800; color:#00175A; letter-spacing:.1px }
     `}));
-    const pill = el('div', {class: 'l', onclick: () => showPanel()},
+    const pill = el('div', {class: 'l'},
       el('div', {class: 'i', text: '＋'}),
       el('div', {},
         el('div', {class: 't', text: 'Amex 助手'})));
     root.append(pill);
     document.body.appendChild(host);
     launcherButton = host;
+    // Draggable; a press that doesn't move opens the panel.
+    makeDraggable(host, pill, {
+      onClick: () => showPanel(),
+      onMove: () => pill.classList.add('float'),
+    });
   }
 
   window.AmexAssistant = {...api, showPanel, openPanel: showPanel};
