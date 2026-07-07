@@ -1610,17 +1610,17 @@
     const rt = el('div', {class: 'rt'});
     if (fullyAdded) {
       rt.append(el('div', {class: 'done-tag',
-        text: `${group.cards.length} 张卡都已加`}));
+        text: `已加全部 ${group.cards.length} 卡`}));
     } else {
       const badge = el('div', {class: 'bd'});
       if (addedCount) {
         badge.append(
-          el('span', {text: `可加 ${addable.length} 张`}),
+          el('span', {text: `可加 ${addable.length}`}),
           el('span', {class: 'dot', text: ' · '}),
-          el('span', {class: 'en', text: `已加 ${addedCount} 张`}),
+          el('span', {class: 'en', text: `已加 ${addedCount}`}),
           el('span', {class: 'car', text: ' ▾'}));
       } else {
-        badge.append(el('span', {text: `可加 ${addable.length} 张`}),
+        badge.append(el('span', {text: `可加 ${addable.length}`}),
           el('span', {class: 'car', text: ' ▾'}));
       }
       badge.onclick = () => toggleExpand(wrap, box, badge, group);
@@ -1900,12 +1900,12 @@
       state.multiOnly = multi.checked;
       renderRows(body);
     };
-    tb.append(el('label', {}, multi, '只看能加多张卡的'),
+    tb.append(el('label', {}, multi, '只看多卡可加'),
       el('div', {class: 'sp'}),
       el('div', {class: 'ac'},
-        el('a', {class: 'a-blue', text: '全选当前可加',
+        el('a', {class: 'a-blue', text: '全选可加',
           onclick: () => selectAllVisible(body)}),
-        el('a', {class: 'a-mut', text: '清空选择',
+        el('a', {class: 'a-mut', text: '清空',
           onclick: () => clearSelection(body)})));
     body.append(tb);
 
