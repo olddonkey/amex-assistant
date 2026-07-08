@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.20.0
+// @version      0.21.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -2095,6 +2095,59 @@
     if (label) label.textContent = t('launcherTitle');
   }
 
+  // ---- position persistence -------------------------------------------------
+  // Same store as the language choice: dragged positions of the launcher and
+  // the panel are kept in the Amex origin's localStorage so they survive a
+  // reload (the script otherwise rebuilds both at their hardcoded defaults).
+
+  /** localStorage key prefix for remembered drag positions. */
+  const POS_STORAGE_PREFIX = 'amexAssistantPos:';
+
+  /**
+   * Reads a saved drag position.
+   * @param {string} key Sub-key, e.g. `'launcher'` or `'panel'`.
+   * @return {?{x: number, y: number, float: boolean}} Position, or null.
+   */
+  function savedPosition(key) {
+    try {
+      const raw = localStorage.getItem(POS_STORAGE_PREFIX + key);
+      if (!raw) return null;
+      const pos = JSON.parse(raw);
+      if (typeof pos.x !== 'number' || typeof pos.y !== 'number') return null;
+      return {x: pos.x, y: pos.y, float: !!pos.float};
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Persists a drag position.
+   * @param {string} key Sub-key, e.g. `'launcher'` or `'panel'`.
+   * @param {{x: number, y: number, float: boolean}} pos Position to save.
+   */
+  function savePosition(key, pos) {
+    try {
+      localStorage.setItem(POS_STORAGE_PREFIX + key, JSON.stringify(pos));
+    } catch { /* private mode etc.; the position just won't stick */ }
+  }
+
+  /**
+   * Applies a saved position to a fixed host, re-clamped to the current
+   * viewport (the window may have been resized since it was saved). The host
+   * must already be laid out so its size can be measured.
+   * @param {!Element} host The fixed element to place.
+   * @param {{x: number, y: number}} pos Saved position.
+   */
+  function applyPosition(host, pos) {
+    const maxX = window.innerWidth - host.offsetWidth - 4;
+    const maxY = window.innerHeight - host.offsetHeight - 4;
+    const x = Math.max(4, Math.min(pos.x, maxX));
+    const y = Math.max(4, Math.min(pos.y, maxY));
+    host.style.left = `${x}px`;
+    host.style.top = `${y}px`;
+    host.style.right = 'auto';
+  }
+
   /**
    * Tiny DOM builder. `props`: `class`/`style`/`text` plus `on*` handlers and
    * any attribute; data goes through `text`/children as text nodes (never
@@ -3999,13 +4052,15 @@
 
   /**
    * Makes a fixed-positioned host draggable. Clamps to the viewport; the host's
-   * own inline style remembers where it was left. A press that doesn't move
+   * own inline style remembers where it was left, and (with `storeKey`) the
+   * position is persisted so it survives a reload. A press that doesn't move
    * counts as a click (for the launcher).
    * @param {!Element} host The fixed element to move.
    * @param {!EventTarget} listenOn Where to listen (element or shadow root).
    * @param {{only: (string|undefined), ignore: (string|undefined),
    *          onClick: (function(!Event)|undefined),
-   *          onMove: (function()|undefined)}=} opts Behavior.
+   *          onMove: (function()|undefined), storeKey: (string|undefined),
+   *          float: (boolean|undefined)}=} opts Behavior.
    */
   function makeDraggable(host, listenOn, opts = {}) {
     listenOn.addEventListener('mousedown', (e) => {
@@ -4018,6 +4073,8 @@
       const startX = e.clientX;
       const startY = e.clientY;
       let moved = false;
+      let lastX = rect.left;
+      let lastY = rect.top;
       const move = (ev) => {
         if (Math.abs(ev.clientX - startX) +
             Math.abs(ev.clientY - startY) > 4) {
@@ -4026,16 +4083,23 @@
         }
         const maxX = window.innerWidth - host.offsetWidth - 4;
         const maxY = window.innerHeight - host.offsetHeight - 4;
-        const x = Math.max(4, Math.min(ev.clientX - offX, maxX));
-        const y = Math.max(4, Math.min(ev.clientY - offY, maxY));
-        host.style.left = `${x}px`;
-        host.style.top = `${y}px`;
+        lastX = Math.max(4, Math.min(ev.clientX - offX, maxX));
+        lastY = Math.max(4, Math.min(ev.clientY - offY, maxY));
+        host.style.left = `${lastX}px`;
+        host.style.top = `${lastY}px`;
         host.style.right = 'auto';
       };
       const up = (ev) => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
-        if (!moved && opts.onClick) opts.onClick(ev);
+        if (moved) {
+          if (opts.storeKey) {
+            savePosition(opts.storeKey,
+              {x: lastX, y: lastY, float: !!opts.float});
+          }
+        } else if (opts.onClick) {
+          opts.onClick(ev);
+        }
       };
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
@@ -4110,7 +4174,8 @@
     root.append(el('style', {text: PANEL_STYLE}));
     root.append(el('div', {class: 'p', id: 'shell'}));
     // Drag the panel by its title row; buttons/tabs keep their own clicks.
-    makeDraggable(host, root, {only: '.hrow', ignore: 'button, .rf, .cl'});
+    makeDraggable(host, root,
+      {only: '.hrow', ignore: 'button, .rf, .cl', storeKey: 'panel'});
     return root;
   }
 
@@ -4152,7 +4217,8 @@
 
   /** Shows the panel, creating and loading it only on first use. */
   function showPanel() {
-    if (!panelHost) createPanel();
+    const firstCreate = !panelHost;
+    if (firstCreate) createPanel();
     fadeLauncher(false);
     panelHost.style.display = '';
     if (!langChosen) {
@@ -4164,6 +4230,12 @@
       refresh();
     } else {
       render();
+    }
+    // Restore the saved spot once, after the first render so the panel has a
+    // real height to clamp against (later opens keep the in-session position).
+    if (firstCreate) {
+      const saved = savedPosition('panel');
+      if (saved) applyPosition(panelHost, saved);
     }
     animatePanelIn();
   }
@@ -4206,8 +4278,16 @@
     root.append(pill);
     document.body.appendChild(host);
     launcherButton = host;
+    // Restore a previously dragged spot (it becomes a free-floating pill then).
+    const saved = savedPosition('launcher');
+    if (saved) {
+      applyPosition(host, saved);
+      if (saved.float) pill.classList.add('float');
+    }
     // Draggable; a press that doesn't move opens the panel.
     makeDraggable(host, pill, {
+      storeKey: 'launcher',
+      float: true,
       onClick: () => showPanel(),
       onMove: () => pill.classList.add('float'),
     });
