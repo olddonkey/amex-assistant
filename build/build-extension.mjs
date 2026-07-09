@@ -83,7 +83,11 @@ function main() {
   writeFileSync(join(OUT, 'manifest.json'),
       JSON.stringify(manifest, null, 2) + '\n');
   writeFileSync(join(OUT, 'amex-assistant.js'), body);
-  cpSync(ICONS_SRC, join(OUT, 'icons'), {recursive: true});
+  // Ship only the rasterized PNGs; the .svg sources stay out of the package.
+  cpSync(ICONS_SRC, join(OUT, 'icons'), {
+    recursive: true,
+    filter: (src) => !src.endsWith('.svg'),
+  });
 
   // Zip with manifest.json at the archive root (CWS requirement).
   const zipName = `amex-assistant-${version}.zip`;
