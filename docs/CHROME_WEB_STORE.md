@@ -140,7 +140,10 @@ Two workflows automate the build:
   secrets needed.
 - **`.github/workflows/release.yml`** — on a `v*` tag: verifies the tag matches
   `@version`, builds, attaches the `.zip` to a GitHub Release, and (if the CWS
-  secrets are set) uploads it to the Chrome Web Store **as a draft**.
+  secrets are set) uploads it to the Chrome Web Store **as a draft**. If the
+  store item is still pending review (`ITEM_NOT_UPDATABLE`), the upload step
+  logs a warning instead of failing — re-run the workflow after the review
+  completes, or upload the Release zip by hand.
 
 Cutting a release:
 
