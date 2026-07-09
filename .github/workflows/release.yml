@@ -1,0 +1,68 @@
+name: Release
+
+# Tag a release to publish the packaged extension:
+#   git tag v0.21.0 && git push origin v0.21.0
+# The tag must match @version in src/amex-assistant.user.js.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify tag matches @version
+        run: |
+          src_version="$(grep -m1 '@version' src/amex-assistant.user.js | awk '{print $3}')"
+          tag_version="${GITHUB_REF_NAME#v}"
+          echo "source @version=$src_version  tag=$tag_version"
+          if [ "$src_version" != "$tag_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match @version $src_version in src/amex-assistant.user.js"
+            exit 1
+          fi
+
+      - name: Lint and test
+        run: npm run lint && npm test
+
+      - name: Build extension package
+        run: npm run build
+
+      - name: Attach zip to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/amex-assistant-*.zip
+          generate_release_notes: true
+
+      # Uploads the new package to the Chrome Web Store as a DRAFT (does not
+      # publish). Review and click Publish in the dashboard afterwards.
+      # No-ops with a green check until the four CWS_* secrets are configured —
+      # see docs/CHROME_WEB_STORE.md.
+      - name: Upload draft to Chrome Web Store
+        env:
+          EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          if [ -z "$CLIENT_ID" ]; then
+            echo "::notice::CWS secrets not configured — skipping draft upload. See docs/CHROME_WEB_STORE.md."
+            exit 0
+          fi
+          zip="$(ls dist/amex-assistant-*.zip)"
+          npx --yes chrome-webstore-upload-cli@3 upload \
+            --source "$zip" \
+            --extension-id "$EXTENSION_ID"
+          echo "::notice::Uploaded $zip to the Chrome Web Store as a DRAFT. Review and Publish it in the dashboard."

@@ -6,7 +6,9 @@
   "private": true,
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
-    "lint": "eslint src test"
+    "lint": "eslint src test",
+    "build:icons": "python3 build/make-icons.py",
+    "build": "node build/build-extension.mjs"
   },
   "keywords": [
     "amex",
