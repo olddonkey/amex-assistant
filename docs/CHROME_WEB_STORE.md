@@ -140,17 +140,25 @@ Two workflows automate the build:
   secrets needed.
 - **`.github/workflows/release.yml`** — on a `v*` tag: verifies the tag matches
   `@version`, builds, attaches the `.zip` to a GitHub Release, and (if the CWS
-  secrets are set) uploads it to the Chrome Web Store **as a draft**.
+  secrets are set) uploads it to the Chrome Web Store **as a draft**. If the
+  store item is still pending review (`ITEM_NOT_UPDATABLE`), the upload step
+  logs a warning instead of failing — re-run the workflow after the review
+  completes, or upload the Release zip by hand.
 
-Cutting a release:
+Cutting a release — one command keeps the tag and `@version` in lockstep:
 
 ```bash
-# bump @version in src/amex-assistant.user.js to e.g. 0.22.0, commit, then:
-git tag v0.22.0
-git push origin v0.22.0
+npm run release                    # tag the @version already in the source
+npm run release patch              # 0.23.0 -> 0.23.1: bump, test, tag, push
+npm run release minor              # 0.23.0 -> 0.24.0
+npm run release 0.25.0             # explicit version
+npm run release patch -- --dry-run # print the plan, change nothing
 ```
 
-The tag must equal `@version` or the workflow fails on purpose (drift guard).
+The script verifies a clean `main` in sync with origin, bumps `@version`
+(when asked), runs lint + tests, commits `Bump version to X.Y.Z`, tags
+`vX.Y.Z`, and pushes both. The workflow still enforces tag == `@version`
+as a guard, so a hand-made tag that drifts fails on purpose.
 
 ### Chrome Web Store draft-upload (optional)
 

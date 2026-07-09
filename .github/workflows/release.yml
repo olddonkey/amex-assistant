@@ -50,6 +50,9 @@ jobs:
       # publish). Review and click Publish in the dashboard afterwards.
       # No-ops with a green check until the four CWS_* secrets are configured —
       # see docs/CHROME_WEB_STORE.md.
+      # A store item that is still pending review cannot take a new draft
+      # (ITEM_NOT_UPDATABLE); that is a store state, not a broken release, so
+      # it downgrades to a warning. Real errors (bad credentials etc.) fail.
       - name: Upload draft to Chrome Web Store
         env:
           EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
@@ -62,7 +65,17 @@ jobs:
             exit 0
           fi
           zip="$(ls dist/amex-assistant-*.zip)"
-          npx --yes chrome-webstore-upload-cli@3 upload \
+          set +e
+          out="$(npx --yes chrome-webstore-upload-cli@3 upload \
             --source "$zip" \
-            --extension-id "$EXTENSION_ID"
-          echo "::notice::Uploaded $zip to the Chrome Web Store as a DRAFT. Review and Publish it in the dashboard."
+            --extension-id "$EXTENSION_ID" 2>&1)"
+          status=$?
+          set -e
+          echo "$out"
+          if [ "$status" -eq 0 ]; then
+            echo "::notice::Uploaded $zip to the Chrome Web Store as a DRAFT. Review and Publish it in the dashboard."
+          elif echo "$out" | grep -q 'ITEM_NOT_UPDATABLE'; then
+            echo "::warning::Store item is pending review — draft upload skipped (ITEM_NOT_UPDATABLE). Re-run this workflow after the review completes, or upload the zip from the GitHub Release by hand."
+          else
+            exit "$status"
+          fi
