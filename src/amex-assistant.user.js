@@ -2308,9 +2308,15 @@
       width: 28px; height: 28px; border-radius: 50%; border: 1px solid #E3E5E8;
       background: #fff; color: #53565A; font-size: 15px; cursor: pointer;
       display: flex; align-items: center; justify-content: center; flex: none;
+      transition: background .15s ease, border-color .15s ease;
     }
-    .cl { font-size: 18px; color: #8B8E93; cursor: pointer; line-height: 1;
-      background: none; border: none; padding: 0 2px; flex: none; }
+    .rf:hover { background: #F2F3F4; border-color: #C9CCD0; }
+    .cl { width: 28px; height: 28px; border-radius: 50%; margin-right: -6px;
+      font-size: 18px; color: #8B8E93; cursor: pointer; line-height: 1;
+      background: none; border: none; flex: none; display: flex;
+      align-items: center; justify-content: center;
+      transition: background .15s ease, color .15s ease; }
+    .cl:hover { background: #F2F3F4; color: #26282A; }
     .rf.lang { font-size: 10.5px; font-weight: 700; letter-spacing: .3px; }
     .body { overflow-y: auto; }
     .sr { padding: 12px 18px 0; }
