@@ -2297,6 +2297,8 @@
       color: #fff; display: flex; align-items: center; justify-content: center;
       font-size: 17px; font-weight: 600; line-height: 1; flex: none;
     }
+    /* Brand icon carries its own artwork/background. */
+    .ic.brand { background: none; border-radius: 0; }
     .hd .tt { flex: 1; min-width: 0; }
     .t1 { font-size: 14.5px; font-weight: 800; color: var(--navy);
       letter-spacing: .1px; }
@@ -2782,13 +2784,14 @@
       '<polyline points="21 3 21 9 15 9"></polyline></svg>';
 
   /**
-   * The launcher/extension icon: a two-card stack with a "+" badge on the Amex
-   * blue. Same artwork rendered to PNGs for the Chrome extension
-   * (extension/icons/). Kept as an inline SVG so the pill needs no image asset.
+   * The brand icon: a two-card stack with a "+" badge on the Amex blue. Used by
+   * both the launcher pill and the panel header (sized by its container), and
+   * rendered to PNGs for the Chrome extension (extension/icons/). Kept as an
+   * inline SVG so neither spot needs an image asset.
    * @const {string}
    */
-  const LAUNCHER_ICON =
-      '<svg width="24" height="24" viewBox="0 0 128 128" ' +
+  const BRAND_ICON =
+      '<svg width="100%" height="100%" viewBox="0 0 128 128" ' +
       'style="display:block">' +
       '<rect width="128" height="128" rx="26" fill="#006FCF"></rect>' +
       '<rect x="34" y="26" width="66" height="44" rx="7" ' +
@@ -2816,7 +2819,15 @@
     if (opts.tabs) cls += ' tabbed';
     const hd = el('div', {class: cls});
     const row = el('div', {class: 'hrow'});
-    row.append(el('div', {class: 'ic'}, opts.glyph));
+    // The default '＋' glyph is the brand icon; status glyphs ('!', '✓',
+    // spinner) keep the plain blue chip.
+    if (opts.glyph === '＋') {
+      const ic = el('div', {class: 'ic brand'});
+      ic.innerHTML = BRAND_ICON;
+      row.append(ic);
+    } else {
+      row.append(el('div', {class: 'ic'}, opts.glyph));
+    }
     row.append(el('div', {class: 'tt'},
       el('div', {class: 't1', text: opts.title}),
       opts.subtitle ? el('div', {class: 't2', text: opts.subtitle}) : null));
@@ -4291,7 +4302,7 @@
       .t { font-weight:800; color:#00175A; letter-spacing:.1px }
     `}));
     const iconChip = el('div', {class: 'i'});
-    iconChip.innerHTML = LAUNCHER_ICON;
+    iconChip.innerHTML = BRAND_ICON;
     const pill = el('div', {class: 'l'},
       iconChip,
       el('div', {},
