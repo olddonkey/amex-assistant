@@ -8,6 +8,7 @@
     "test": "node --test \"test/*.test.mjs\"",
     "lint": "eslint src test",
     "build:icons": "node build/make-icons.mjs",
+    "build:store": "node build/make-store-shots.mjs",
     "build": "node build/build-extension.mjs"
   },
   "keywords": [

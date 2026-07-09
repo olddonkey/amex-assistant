@@ -224,9 +224,10 @@
       loadingReadOnly: '这里只读取 offer 列表，不会改动账户',
       // Confirm dialog
       confirmTitle: '确认添加到 {n} 张卡？',
-      confirmBody1: '已选 {offers} 个 offer，共 {cards} 张卡。系统会',
-      confirmBodyBold: '一次性提交这些请求',
-      confirmBody2: '；提交后不能撤销。完成后会重新读取已添加列表，逐张卡核对。',
+      confirmBody1: '已选 {offers} 个 offer，共 {cards} 张卡。同一 offer 的几张卡会',
+      confirmBodyBold: '同时提交',
+      confirmBody2: '，不同 offer 之间自动间隔几秒；提交后不能撤销。' +
+          '完成后会重新读取已添加列表，逐张卡核对。',
       confirmRowCards: '{name} → {n} 张卡',
       cancel: '取消',
       confirmSubmit: '确认提交',
@@ -361,10 +362,11 @@
       // Confirm dialog
       confirmTitle: 'Add to {n} cards?',
       confirmBody1: '{offers} offer(s) selected across {cards} card(s). ' +
-          'This will ',
-      confirmBodyBold: 'submit all requests at once',
-      confirmBody2: ' and cannot be undone. Afterwards the added list is ' +
-          're-read to verify each card.',
+          'Cards on the same offer are ',
+      confirmBodyBold: 'submitted together',
+      confirmBody2: '; different offers are paced a few seconds apart. ' +
+          'This cannot be undone. Afterwards the added list is re-read to ' +
+          'verify each card.',
       confirmRowCards: '{name} → {n} card(s)',
       cancel: 'Cancel',
       confirmSubmit: 'Confirm & submit',
@@ -2558,8 +2560,12 @@
       font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
     .lastrun .sp { flex: 1; }
     .lastrun .when { color: var(--mut); }
-    /* Confirm dialog */
-    .cfwrap { position: relative; }
+    /* Confirm dialog. The dimmed backdrop and the overlay stack in one grid
+       cell so the wrap grows to fit whichever is taller — a long offer
+       summary used to overflow the panel's hidden-overflow shell and clip
+       the dialog (buttons included). */
+    .cfwrap { display: grid; }
+    .cfwrap > * { grid-area: 1 / 1; }
     .cfdim { opacity: .4; pointer-events: none; }
     .cfsk { padding: 14px 18px; display: flex; flex-direction: column;
       gap: 12px; background: #fff; }
@@ -2570,7 +2576,7 @@
     .skl { height: 10px; border-radius: 2px; background: var(--card); }
     .skl.a { width: 52%; }
     .skl.b { width: 74%; height: 9px; background: #F7F8F9; }
-    .cfov { position: absolute; inset: 0; background: rgba(0, 23, 90, .30);
+    .cfov { background: rgba(0, 23, 90, .30);
       display: flex; align-items: center; justify-content: center;
       padding: 26px; }
     .cfdlg { background: #fff; border-radius: 6px; width: 100%; padding: 20px;
@@ -2581,7 +2587,10 @@
     .cf-d b { color: var(--ink); }
     .cf-sum { margin-top: 10px; background: #F7F8F9; border: 1px solid #EDEEF0;
       border-radius: 4px; padding: 9px 12px; font-size: 11.5px;
-      color: var(--sub); line-height: 1.7; font-variant-numeric: tabular-nums; }
+      color: var(--sub); line-height: 1.7; font-variant-numeric: tabular-nums;
+      /* A large selection scrolls instead of growing the dialog past the
+         panel's 80vh shell. */
+      max-height: 30vh; overflow-y: auto; }
     .cf-btns { display: flex; gap: 10px; margin-top: 16px;
       justify-content: flex-end; }
     .cf-cancel { border: 1px solid #D5D7DB; color: var(--sub); font-size: 12.5px;
