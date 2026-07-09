@@ -105,10 +105,10 @@ or internal APIs anywhere in the public listing.
 ## Assets checklist
 
 - [x] Icon 128×128 (+16/48) — `extension/icons/`, bundled by the build.
-- [ ] **Screenshots — 1280×800 or 640×400 (at least 1, up to 5).** The images in
-      `docs/` are portrait and cannot be used as-is. Capture horizontal browser
-      screenshots of the panel / results / benefits views on
-      global.americanexpress.com.
+- [x] **Screenshots — 1280×800, 24-bit PNG, no alpha.** Drop panel captures in
+      `docs/store/raw/` and run `npm run build:store` — it composes each onto a
+      branded 1280×800 frame in `docs/store/` (`01-offers` … `04-launcher`).
+      Upload those to the listing's Screenshots slot.
 - [ ] Small promo tile 440×280 (optional).
 - [ ] Demo video URL for the reviewer notes (recommended — see above).
 
