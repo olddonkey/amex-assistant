@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.21.0
+// @version      0.22.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -2782,6 +2782,27 @@
       '<polyline points="21 3 21 9 15 9"></polyline></svg>';
 
   /**
+   * The launcher/extension icon: a two-card stack with a "+" badge on the Amex
+   * blue. Same artwork rendered to PNGs for the Chrome extension
+   * (extension/icons/). Kept as an inline SVG so the pill needs no image asset.
+   * @const {string}
+   */
+  const LAUNCHER_ICON =
+      '<svg width="24" height="24" viewBox="0 0 128 128" ' +
+      'style="display:block">' +
+      '<rect width="128" height="128" rx="26" fill="#006FCF"></rect>' +
+      '<rect x="34" y="26" width="66" height="44" rx="7" ' +
+      'fill="#7FB5E5"></rect>' +
+      '<rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect>' +
+      '<rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect>' +
+      '<rect x="30" y="70" width="26" height="6" rx="3" ' +
+      'fill="#C9CCD0"></rect>' +
+      '<circle cx="92" cy="90" r="21" fill="#00175A"></circle>' +
+      '<rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect>' +
+      '<rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect>' +
+      '</svg>';
+
+  /**
    * Builds the header row.
    * @param {{glyph: (string|Node), title: string, subtitle: string,
    *          refresh: (boolean|undefined), close: (boolean|undefined),
@@ -4266,13 +4287,13 @@
         pointer-events:none }
       /* Once dragged off the edge it becomes a normal free-floating pill. */
       .l.float { border-right:1px solid #E3E5E8; border-radius:6px }
-      .i { width:24px; height:24px; border-radius:4px; background:#006FCF;
-        color:#fff; display:flex; align-items:center; justify-content:center;
-        font-size:15px; font-weight:600; line-height:1 }
+      .i { width:24px; height:24px }
       .t { font-weight:800; color:#00175A; letter-spacing:.1px }
     `}));
+    const iconChip = el('div', {class: 'i'});
+    iconChip.innerHTML = LAUNCHER_ICON;
     const pill = el('div', {class: 'l'},
-      el('div', {class: 'i', text: '＋'}),
+      iconChip,
       el('div', {},
         el('div', {class: 't', text: t('launcherTitle')})));
     root.append(pill);
