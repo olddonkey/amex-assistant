@@ -132,6 +132,31 @@ function frame(b64, shot) {
     heroFrame(b64, h, shot.sub) : sideFrame(b64, h, shot.sub);
 }
 
+// Small promo tile (440x280): icon + wordmark + one-line tagline. No capture.
+function promoFrame() {
+  return `<!doctype html><meta charset=utf-8><style>${COMMON_CSS}
+  html,body{width:440px;height:280px}
+  .frame{width:440px;height:280px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center}
+  .ic{width:76px;height:76px;margin-bottom:20px}
+  .wm2{font-size:30px;font-weight:800;color:#00175A;letter-spacing:.2px}
+  .accent{margin:14px auto}
+  .tag{font-size:15px;line-height:1.4;color:#4A5568;max-width:340px}
+  </style><div class="frame">
+    <div class="ic">${BRAND_ICON}</div>
+    <div class="wm2">Amex Assistant</div><div class="accent"></div>
+    <div class="tag">Manage Amex Offers &amp; benefits across all your cards</div>
+  </div>`;
+}
+
+function render(chrome, htmlPath, outPath, w, h) {
+  execFileSync(chrome, [
+    '--headless=new', '--disable-gpu', '--hide-scrollbars',
+    '--force-device-scale-factor=1', `--window-size=${w},${h}`,
+    `--screenshot=${outPath}`, htmlPath,
+  ], {stdio: 'ignore'});
+}
+
 function main() {
   const chrome = findChrome();
   mkdirSync(OUT, {recursive: true});
@@ -146,14 +171,17 @@ function main() {
     const b64 = readFileSync(rawPath).toString('base64');
     const htmlPath = join(tmp, s.out + '.html');
     writeFileSync(htmlPath, frame(b64, s));
-    execFileSync(chrome, [
-      '--headless=new', '--disable-gpu', '--hide-scrollbars',
-      '--force-device-scale-factor=1', '--window-size=1280,800',
-      `--screenshot=${join(OUT, s.out)}`, htmlPath,
-    ], {stdio: 'ignore'});
+    render(chrome, htmlPath, join(OUT, s.out), 1280, 800);
     console.log(`wrote docs/store/${s.out}`);
     done++;
   }
+
+  // The promo tile needs no capture — always render it.
+  const promoHtml = join(tmp, 'promo.html');
+  writeFileSync(promoHtml, promoFrame());
+  render(chrome, promoHtml, join(OUT, 'promo-440x280.png'), 440, 280);
+  console.log('wrote docs/store/promo-440x280.png');
+
   if (!done) {
     console.log('\nNo raw screenshots found. Save your captures to ' +
         'docs/store/raw/ (offers.png, results.png, benefits.png, ' +
