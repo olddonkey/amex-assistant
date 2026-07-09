@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.22.0
+// @version      0.22.1
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -2578,7 +2578,10 @@
     .skl.b { width: 74%; height: 9px; background: #F7F8F9; }
     .cfov { background: rgba(0, 23, 90, .30);
       display: flex; align-items: center; justify-content: center;
-      padding: 26px; }
+      padding: 26px;
+      /* Positioned so it paints above .cfdim, whose opacity forms a stacking
+         context that would otherwise composite over this in-flow overlay. */
+      position: relative; }
     .cfdlg { background: #fff; border-radius: 6px; width: 100%; padding: 20px;
       box-shadow: 0 12px 32px rgba(0, 23, 90, .35); }
     .cf-t { font-size: 14px; font-weight: 800; color: var(--navy); }
