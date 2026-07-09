@@ -149,6 +149,29 @@ function promoFrame() {
   </div>`;
 }
 
+// Marquee tile (1400x560): brand + summary on the left, a panel on the right.
+function marqueeFrame(b64) {
+  return `<!doctype html><meta charset=utf-8><style>${COMMON_CSS}
+  html,body{width:1400px;height:560px}
+  .frame{width:1400px;height:560px;display:flex;align-items:center}
+  .text{flex:1;padding:0 40px 0 90px}
+  h1{font-size:46px}
+  .accent{margin:24px 0}
+  p{font-size:19px;max-width:560px}
+  .panelwrap{width:500px;height:560px;display:flex;align-items:center;
+    justify-content:center}
+  .card{max-height:496px;max-width:440px}
+  </style><div class="frame"><div class="text">
+    <div class="eyebrow"><div class="ic">${BRAND_ICON}</div>
+      <div class="wm">Amex Assistant</div></div>
+    <h1>Offers &amp; benefits across<br>all your Amex cards</h1>
+    <div class="accent"></div>
+    <p>Add an offer to every eligible card at once, confirm which cards got
+    it, and track statement credits — all local, no telemetry.</p>
+  </div><div class="panelwrap">
+    <img class="card" src="data:image/png;base64,${b64}"></div></div>`;
+}
+
 function render(chrome, htmlPath, outPath, w, h) {
   execFileSync(chrome, [
     '--headless=new', '--disable-gpu', '--hide-scrollbars',
@@ -181,6 +204,16 @@ function main() {
   writeFileSync(promoHtml, promoFrame());
   render(chrome, promoHtml, join(OUT, 'promo-440x280.png'), 440, 280);
   console.log('wrote docs/store/promo-440x280.png');
+
+  // The marquee reuses the offers capture on the right.
+  const offersRaw = join(RAW, 'offers.png');
+  if (existsSync(offersRaw)) {
+    const marqueeHtml = join(tmp, 'marquee.html');
+    writeFileSync(marqueeHtml,
+        marqueeFrame(readFileSync(offersRaw).toString('base64')));
+    render(chrome, marqueeHtml, join(OUT, 'marquee-1400x560.png'), 1400, 560);
+    console.log('wrote docs/store/marquee-1400x560.png');
+  }
 
   if (!done) {
     console.log('\nNo raw screenshots found. Save your captures to ' +
