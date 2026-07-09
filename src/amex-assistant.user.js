@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.22.1
+// @version      0.23.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -223,12 +223,11 @@
       loadingCardList: '正在读取卡列表…',
       loadingReadOnly: '这里只读取 offer 列表，不会改动账户',
       // Confirm dialog
-      confirmTitle: '确认添加到 {n} 张卡？',
-      confirmBody1: '已选 {offers} 个 offer，共 {cards} 张卡。同一 offer 的几张卡会',
-      confirmBodyBold: '同时提交',
-      confirmBody2: '，不同 offer 之间自动间隔几秒；提交后不能撤销。' +
-          '完成后会重新读取已添加列表，逐张卡核对。',
-      confirmRowCards: '{name} → {n} 张卡',
+      confirmTitle: '提交 {n} 个添加？',
+      confirmSub: '同一 offer 的卡同时提交，不同 offer 之间自动间隔几秒；' +
+          '提交后不可撤销。',
+      confirmCards: '{n} 张卡',
+      confirmMeta: '共 {offers} 个 offer · {adds} 次添加 · 完成后逐卡确认',
       cancel: '取消',
       confirmSubmit: '确认提交',
       // Running
@@ -360,14 +359,12 @@
       loadingReadOnly: 'Read-only at this step — nothing on the account ' +
           'changes',
       // Confirm dialog
-      confirmTitle: 'Add to {n} cards?',
-      confirmBody1: '{offers} offer(s) selected across {cards} card(s). ' +
-          'Cards on the same offer are ',
-      confirmBodyBold: 'submitted together',
-      confirmBody2: '; different offers are paced a few seconds apart. ' +
-          'This cannot be undone. Afterwards the added list is re-read to ' +
-          'verify each card.',
-      confirmRowCards: '{name} → {n} card(s)',
+      confirmTitle: 'Submit {n} addition(s)?',
+      confirmSub: 'Cards on the same offer submit together; different ' +
+          'offers are paced a few seconds apart. This cannot be undone.',
+      confirmCards: '{n} card(s)',
+      confirmMeta: '{offers} offer(s) · {adds} addition(s) · ' +
+          'each card is verified afterwards',
       cancel: 'Cancel',
       confirmSubmit: 'Confirm & submit',
       // Running
@@ -2565,7 +2562,9 @@
        summary used to overflow the panel's hidden-overflow shell and clip
        the dialog (buttons included). */
     .cfwrap { display: grid; }
-    .cfwrap > * { grid-area: 1 / 1; }
+    /* min-width: 0 keeps a grid item's auto minimum (min-content — large
+       when the dialog holds nowrap rows) from pushing past the cell. */
+    .cfwrap > * { grid-area: 1 / 1; min-width: 0; }
     .cfdim { opacity: .4; pointer-events: none; }
     .cfsk { padding: 14px 18px; display: flex; flex-direction: column;
       gap: 12px; background: #fff; }
@@ -2582,24 +2581,36 @@
       /* Positioned so it paints above .cfdim, whose opacity forms a stacking
          context that would otherwise composite over this in-flow overlay. */
       position: relative; }
-    .cfdlg { background: #fff; border-radius: 6px; width: 100%; padding: 20px;
-      box-shadow: 0 12px 32px rgba(0, 23, 90, .35); }
-    .cf-t { font-size: 14px; font-weight: 800; color: var(--navy); }
-    .cf-d { font-size: 12px; color: var(--sub); line-height: 1.6;
-      margin-top: 7px; }
-    .cf-d b { color: var(--ink); }
-    .cf-sum { margin-top: 10px; background: #F7F8F9; border: 1px solid #EDEEF0;
-      border-radius: 4px; padding: 9px 12px; font-size: 11.5px;
-      color: var(--sub); line-height: 1.7; font-variant-numeric: tabular-nums;
-      /* A large selection scrolls instead of growing the dialog past the
-         panel's 80vh shell. */
-      max-height: 30vh; overflow-y: auto; }
-    .cf-btns { display: flex; gap: 10px; margin-top: 16px;
+    .cfdlg { background: #fff; border-radius: 6px; width: 100%;
+      box-shadow: 0 12px 32px rgba(0, 23, 90, .35); overflow: hidden; }
+    .cf-hd { padding: 18px 20px 0; }
+    .cf-t { font-size: 15px; font-weight: 800; color: var(--navy); }
+    .cf-d { font-size: 11.5px; color: var(--mut); line-height: 1.55;
+      margin-top: 4px; }
+    .cf-list { margin: 14px 20px 0; border: 1px solid #EDEEF0;
+      border-radius: 4px;
+      /* A large selection scrolls inside the capped list; the meta line
+         below still reports the full totals. */
+      max-height: 176px; overflow-y: auto; }
+    .cf-row { display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px; border-bottom: 1px solid #F2F3F4; font-size: 12px; }
+    .cf-row:last-child { border-bottom: none; }
+    .cf-row .nm { font-weight: 600; color: var(--ink); flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cf-row .ct { color: var(--sub); font-variant-numeric: tabular-nums;
+      white-space: nowrap; }
+    .cf-meta { padding: 8px 20px 0; font-size: 11px; color: var(--fog);
+      font-variant-numeric: tabular-nums; }
+    .cf-btns { display: flex; gap: 10px; padding: 14px 20px 18px;
       justify-content: flex-end; }
     .cf-cancel { border: 1px solid #D5D7DB; color: var(--sub); font-size: 12.5px;
-      font-weight: 600; border-radius: 4px; padding: 9px 18px; cursor: pointer; }
+      font-weight: 600; border-radius: 4px; padding: 9px 18px; cursor: pointer;
+      transition: background .15s ease; }
+    .cf-cancel:hover { background: #F7F8F9; }
     .cf-ok { background: var(--blue); color: #fff; font-size: 12.5px;
-      font-weight: 700; border-radius: 4px; padding: 9px 18px; cursor: pointer; }
+      font-weight: 700; border-radius: 4px; padding: 9px 18px; cursor: pointer;
+      transition: background .15s ease; }
+    .cf-ok:hover { background: #005EB0; }
   `;
 
   /**
@@ -3818,17 +3829,18 @@
     wrap.append(dim);
 
     const dlg = el('div', {class: 'cfdlg'});
-    dlg.append(el('div', {class: 'cf-t',
-      text: t('confirmTitle', {n: tasks.length})}));
-    dlg.append(el('div', {class: 'cf-d'},
-      t('confirmBody1', {offers: byOffer.size, cards: tasks.length}),
-      el('b', {text: t('confirmBodyBold')}),
-      t('confirmBody2')));
-    const sum = el('div', {class: 'cf-sum'});
+    dlg.append(el('div', {class: 'cf-hd'},
+      el('div', {class: 'cf-t', text: t('confirmTitle', {n: tasks.length})}),
+      el('div', {class: 'cf-d', text: t('confirmSub')})));
+    const list = el('div', {class: 'cf-list'});
     for (const [name, n] of byOffer) {
-      sum.append(el('div', {text: t('confirmRowCards', {name, n})}));
+      list.append(el('div', {class: 'cf-row'},
+        el('span', {class: 'nm', text: name}),
+        el('span', {class: 'ct', text: t('confirmCards', {n})})));
     }
-    dlg.append(sum);
+    dlg.append(list);
+    dlg.append(el('div', {class: 'cf-meta',
+      text: t('confirmMeta', {offers: byOffer.size, adds: tasks.length})}));
     dlg.append(el('div', {class: 'cf-btns'},
       el('div', {class: 'cf-cancel', text: t('cancel'),
         onclick: () => cancelConfirm()}),
