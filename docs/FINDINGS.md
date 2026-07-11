@@ -50,10 +50,13 @@ credentials: 'include'
 → { accounts: [ {
       account_token: "<string>",          // 「哪张卡」的唯一标识，后续都用它
       // product.small_card_art, profile.embossed_name 等用于展示
-      supplementary_accounts?: [ { account: { supplementary_index, account_token, ... } } ]
+      // 附属卡与主卡同构：token 在 wrapper 顶层，身份字段嵌在内层 account
+      supplementary_accounts?: [ { account_token, account: { relationship, supplementary_index, account_number, ... } } ]
     }, ... ] }
 ```
-- 遍历 `accounts[]`；如需覆盖附属卡，再遍历每个 `supplementary_accounts[].account`。
+- 遍历 `accounts[]`；覆盖附属卡时再遍历每个 `supplementary_accounts[]`：
+  **token 取 wrapper 的 `account_token`（不是内层 `account.account_token`）**，
+  身份字段（`relationship`=`SUPP`、`supplementary_index`、号码）取内层 `account`。
 
 ### ② 读某张卡的可用 offer（eligible）
 ```

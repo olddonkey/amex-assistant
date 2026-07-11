@@ -105,6 +105,13 @@ test('flattenAccounts includes supplementary cards', () => {
     {
       account_token: 'BASIC1', product: {description: 'Gold'},
       supplementary_accounts: [
+        // Real shape: token on the wrapper, identity nested under `account`.
+        {
+          account_token: 'SUPP0',
+          account: {relationship: 'SUPP', account_number: '31011',
+            supplementary_index: 1},
+        },
+        // Legacy shape: token nested under `account`.
         {account: {account_token: 'SUPP1', display_account_number: '55555'}},
       ],
     },
@@ -115,9 +122,14 @@ test('flattenAccounts includes supplementary cards', () => {
   const cards = flattenAccounts(accounts);
 
   assert.deepEqual(
-    cards.map((c) => c.account_token), ['BASIC1', 'SUPP1', 'BASIC2']);
-  const supp = cards.find((c) => c.account_token === 'SUPP1');
-  assert.equal(supp.product.description, 'Gold'); // inherited from parent
+    cards.map((c) => c.account_token),
+    ['BASIC1', 'SUPP0', 'SUPP1', 'BASIC2']);
+  const supp0 = cards.find((c) => c.account_token === 'SUPP0');
+  assert.equal(supp0.relationship, 'SUPP'); // classified as supplementary
+  assert.equal(supp0.product.description, 'Gold'); // inherited from parent
+  assert.equal(cardDisplayDigits(supp0), '31011'); // nested digits resolved
+  const supp1 = cards.find((c) => c.account_token === 'SUPP1');
+  assert.equal(supp1.product.description, 'Gold'); // inherited from parent
 });
 
 test('classifyAttempts marks unverified when a re-read is missing', () => {

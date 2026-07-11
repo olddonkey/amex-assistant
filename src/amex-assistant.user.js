@@ -807,10 +807,23 @@
     for (const account of accounts) {
       if (account.account_token) cards.push(account);
       for (const supp of account.supplementary_accounts || []) {
-        const sub = supp && supp.account;
-        if (sub && sub.account_token) {
-          cards.push({...sub, product: sub.product || account.product});
-        }
+        // A supplementary entry mirrors a top-level account: its enroll token
+        // sits on the wrapper (`supp.account_token`), while the card's identity
+        // fields (relationship, digits, index) are nested under `supp.account`.
+        // Some payloads instead nest the token too, so accept either place.
+        // Inherit the parent product for display when the supplementary carries
+        // none of its own, and default its relationship to SUPP.
+        const token = supp &&
+            (supp.account_token || getPath(supp, 'account.account_token'));
+        if (!token) continue;
+        cards.push({
+          ...supp,
+          account_token: token,
+          relationship: getPath(supp, 'account.relationship') ||
+              supp.relationship || 'SUPP',
+          product: supp.product || getPath(supp, 'account.product') ||
+              account.product,
+        });
       }
     }
     return cards;
