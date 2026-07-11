@@ -103,13 +103,21 @@ test('buildOfferIndex skips offers without an offerId', () => {
 test('flattenAccounts includes supplementary cards', () => {
   const accounts = [
     {
-      account_token: 'BASIC1', product: {description: 'Gold'},
+      account_token: 'BASIC1',
+      product: {description: 'Gold', small_card_art: 'GOLD.png'},
       supplementary_accounts: [
-        // Real shape: token on the wrapper, identity nested under `account`.
+        // Real shape: token on the wrapper, identity nested under `account`,
+        // and no product of its own (Amex omits it on supplementary entries).
         {
           account_token: 'SUPP0',
           account: {relationship: 'SUPP', account_number: '31011',
             supplementary_index: 1},
+        },
+        // Own product but no card art → must inherit the parent's art.
+        {
+          account_token: 'SUPP2',
+          product: {description: 'Gold'},
+          account: {relationship: 'SUPP', account_number: '31029'},
         },
         // Legacy shape: token nested under `account`.
         {account: {account_token: 'SUPP1', display_account_number: '55555'}},
@@ -123,13 +131,17 @@ test('flattenAccounts includes supplementary cards', () => {
 
   assert.deepEqual(
     cards.map((c) => c.account_token),
-    ['BASIC1', 'SUPP0', 'SUPP1', 'BASIC2']);
+    ['BASIC1', 'SUPP0', 'SUPP2', 'SUPP1', 'BASIC2']);
   const supp0 = cards.find((c) => c.account_token === 'SUPP0');
   assert.equal(supp0.relationship, 'SUPP'); // classified as supplementary
   assert.equal(supp0.product.description, 'Gold'); // inherited from parent
+  assert.equal(supp0.product.small_card_art, 'GOLD.png'); // parent art
   assert.equal(cardDisplayDigits(supp0), '31011'); // nested digits resolved
+  const supp2 = cards.find((c) => c.account_token === 'SUPP2');
+  assert.equal(supp2.product.small_card_art, 'GOLD.png'); // art from parent
   const supp1 = cards.find((c) => c.account_token === 'SUPP1');
   assert.equal(supp1.product.description, 'Gold'); // inherited from parent
+  assert.equal(supp1.product.small_card_art, 'GOLD.png'); // parent art
 });
 
 test('classifyAttempts marks unverified when a re-read is missing', () => {
