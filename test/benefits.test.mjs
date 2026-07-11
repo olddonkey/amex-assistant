@@ -37,12 +37,13 @@ function card(token, family, digits, relationship = 'BASIC') {
 
 test('fetchAllBenefits reads only BASIC cards and tags each benefit',
   async () => {
-    globalThis.fetch = createMockFetch({
+    const fetch = createMockFetch({
       benefits: {
         PLAT: [makeTracker('Airline Fee', {target: 200, spent: 74})],
         SUPP: [makeTracker('Should be skipped')],
       },
     });
+    globalThis.fetch = fetch;
 
     const cards = [
       card('PLAT', 'Platinum', '1005'),
@@ -51,6 +52,10 @@ test('fetchAllBenefits reads only BASIC cards and tags each benefit',
     const progress = [];
     const benefits = await fetchAllBenefits(
       cards, (done, total) => progress.push(`${done}/${total}`));
+
+    // The trackers endpoint answers to `Accept: */*`, not application/json.
+    const benefitsCall = fetch.calls.find((c) => c.url.includes('Trackers'));
+    assert.equal(benefitsCall.headers['Accept'], '*/*');
 
     assert.equal(benefits.length, 1, 'supplementary card excluded');
     const b = benefits[0];
