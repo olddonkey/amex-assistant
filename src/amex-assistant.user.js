@@ -2088,6 +2088,10 @@
     // How the 'added' redeem-tracking view groups its rows: by 'offer'
     // (merchant, then its cards) or by 'card' (card, then its offers).
     addedGroupBy: 'offer',
+    // Expanded groups in the 'added' view (collapsed by default so a card /
+    // offer with many rows stays a one-line summary). Keys: 'o:<offerKey>' or
+    // 'c:<cardToken>'.
+    addedExpanded: new Set(),
     // Redeemed (savings) records per card token, loaded lazily the first
     // time the added sub-view opens; cleared on refresh.
     redeemed: {byToken: new Map(), loaded: false, loading: false, error: '',
@@ -2832,8 +2836,9 @@
     .agrp.dim { opacity: .6; box-shadow: none; }
     .addedlist { display: flex; flex-direction: column; gap: 8px;
       padding: 14px 16px 0; }
-    .arow { display: flex; gap: 11px; padding: 13px 14px 7px; align-items: center; }
-    .agrp.dim .arow { padding: 13px 14px; }
+    .arow { display: flex; gap: 11px; padding: 13px 14px 7px;
+      align-items: center; cursor: pointer; }
+    .arow.flat { padding: 13px 14px; }
     .acards { margin: 0 14px 12px 65px; display: flex; flex-direction: column;
       gap: 6px; }
     .acrow { display: flex; align-items: center; gap: 9px; }
@@ -2843,9 +2848,14 @@
       font-variant-numeric: tabular-nums; }
     .acst.urgent { font-weight: 700; color: var(--red);
       font-variant-numeric: tabular-nums; }
-    /* "By card" grouping: card thumbnail fills, offers listed as sub-rows. */
-    .agroup { padding: 12px 16px 0; }
-    .logo.cardart img { object-fit: cover; }
+    /* "By card" grouping: the group toggle hugs its pills (not a full-width
+       bar), and the card thumbnail keeps the card's aspect so art isn't cropped
+       into a square. */
+    .agroup { display: flex; padding: 12px 16px 0; }
+    .cardthumb { width: 42px; height: 27px; border-radius: 4px;
+      corner-shape: var(--se); flex: none; overflow: hidden;
+      background: linear-gradient(135deg,#dfe2e6,#b3b9c1); }
+    .cardthumb img { width: 100%; height: 100%; object-fit: cover; }
     .ologo { width: 22px; height: 22px; border-radius: 6px;
       corner-shape: var(--se); flex: none; overflow: hidden; display: flex;
       align-items: center; justify-content: center; font-size: 9px;
@@ -3524,12 +3534,25 @@
         el('div', {style: 'flex:1'}), status));
     }
 
-    return el('div', {class: g.fullyRedeemed ? 'agrp dim' : 'agrp'},
-      el('div', {class: 'arow'}, logo, main, rt), cardsBox);
+    // Collapsed by default (an offer added to many cards would be a long
+    // always-open list); the whole row toggles the per-card breakdown.
+    const expanded = state.addedExpanded.has(`o:${g.key}`);
+    const row = el('div', {class: expanded ? 'arow' : 'arow flat'},
+      logo, main, rt,
+      el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
+    row.onclick = () => {
+      if (expanded) state.addedExpanded.delete(`o:${g.key}`);
+      else state.addedExpanded.add(`o:${g.key}`);
+      render();
+    };
+    const wrap = el('div', {class: g.fullyRedeemed ? 'agrp dim' : 'agrp'});
+    wrap.append(row);
+    if (expanded) wrap.append(cardsBox);
+    return wrap;
   }
 
   /**
-   * One card group (the "by card" grouping): card row + always-open per-offer
+   * One card group (the "by card" grouping): card row + collapsible per-offer
    * redemption lines. Mirrors {@link renderAddedRow} with card and offer roles
    * swapped.
    * @param {!Object} cg A by-card group from {@link buildAddedByCard}.
@@ -3537,7 +3560,9 @@
    */
   function renderAddedByCardRow(cg) {
     const cardData = cardOf(cg.token);
-    const thumb = el('div', {class: 'logo cardart'});
+    // A card-shaped thumbnail (cards aren't square, so a square box would crop
+    // the art).
+    const thumb = el('div', {class: 'cardthumb'});
     if (cardData?.art) thumb.append(el('img', {src: cardData.art, alt: ''}));
     else thumb.style.background = swatchStyle(cg.token);
     const name = cardData ? cardData.shortName :
@@ -3589,8 +3614,20 @@
       box.append(el('div', {class: 'acrow'}, olog,
         el('span', {class: 'aoname', text: o.name}), status));
     }
-    return el('div', {class: cg.fullyRedeemed ? 'agrp dim' : 'agrp'},
-      el('div', {class: 'arow'}, thumb, main, rt), box);
+    // Collapsed by default — a card can carry dozens of offers.
+    const expanded = state.addedExpanded.has(`c:${cg.token}`);
+    const row = el('div', {class: expanded ? 'arow' : 'arow flat'},
+      thumb, main, rt,
+      el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
+    row.onclick = () => {
+      if (expanded) state.addedExpanded.delete(`c:${cg.token}`);
+      else state.addedExpanded.add(`c:${cg.token}`);
+      render();
+    };
+    const wrap = el('div', {class: cg.fullyRedeemed ? 'agrp dim' : 'agrp'});
+    wrap.append(row);
+    if (expanded) wrap.append(box);
+    return wrap;
   }
 
   /**
