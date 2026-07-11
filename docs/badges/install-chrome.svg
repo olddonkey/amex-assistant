@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="56" viewBox="0 0 300 56" role="img" aria-label="Install from the Chrome Web Store">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A7DE0"/>
+      <stop offset="1" stop-color="#0061BC"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="56" rx="14" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="299" height="55" rx="13.5" fill="none" stroke="rgba(255,255,255,.22)"/>
+  <rect x="12" y="10" width="36" height="36" rx="10" fill="rgba(255,255,255,.17)"/>
+  <path d="M30 19.5v11.5m0 0l-5.2-5.2M30 31l5.2-5.2" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M22.8 36h14.4" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/>
+  <text x="60" y="24.5" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="700" letter-spacing="1.6" fill="rgba(255,255,255,.82)">CHROME WEB STORE</text>
+  <text x="60" y="43" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">安装扩展 · Install</text>
+</svg>

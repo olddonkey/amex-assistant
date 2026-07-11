@@ -9,19 +9,19 @@
 
 <br>
 
-[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/cdflnehplopihjenmpdpimigmajdfoon?style=flat-square&labelColor=00175A&color=006FCF&label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/amex-assistant/cdflnehplopihjenmpdpimigmajdfoon)
-[![Greasy Fork](https://img.shields.io/greasyfork/v/585884?style=flat-square&labelColor=00175A&color=006FCF&label=Greasy%20Fork)](https://greasyfork.org/en/scripts/585884-amex-assistant)
-[![Installs](https://img.shields.io/greasyfork/dt/585884?style=flat-square&labelColor=00175A&color=006FCF&label=installs)](https://greasyfork.org/en/scripts/585884-amex-assistant)
-[![Stars](https://img.shields.io/github/stars/olddonkey/amex-assistant?style=flat-square&labelColor=00175A&color=006FCF)](https://github.com/olddonkey/amex-assistant/stargazers)
-[![License: MIT](https://img.shields.io/badge/license-MIT-006FCF?style=flat-square&labelColor=00175A)](LICENSE)
-[![Telemetry: none](https://img.shields.io/badge/telemetry-none-006FCF?style=flat-square&labelColor=00175A)](#privacy)
-[![@grant none](https://img.shields.io/badge/%40grant-none-006FCF?style=flat-square&labelColor=00175A)](src/amex-assistant.user.js)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/cdflnehplopihjenmpdpimigmajdfoon?style=flat&labelColor=00175A&color=006FCF&label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/amex-assistant/cdflnehplopihjenmpdpimigmajdfoon)
+[![Greasy Fork](https://img.shields.io/greasyfork/v/585884?style=flat&labelColor=00175A&color=006FCF&label=Greasy%20Fork)](https://greasyfork.org/en/scripts/585884-amex-assistant)
+[![Installs](https://img.shields.io/greasyfork/dt/585884?style=flat&labelColor=00175A&color=006FCF&label=installs)](https://greasyfork.org/en/scripts/585884-amex-assistant)
+[![Stars](https://img.shields.io/github/stars/olddonkey/amex-assistant?style=flat&labelColor=00175A&color=006FCF)](https://github.com/olddonkey/amex-assistant/stargazers)
+[![License: MIT](https://img.shields.io/badge/license-MIT-006FCF?style=flat&labelColor=00175A)](LICENSE)
+[![Telemetry: none](https://img.shields.io/badge/telemetry-none-006FCF?style=flat&labelColor=00175A)](#privacy)
+[![@grant none](https://img.shields.io/badge/%40grant-none-006FCF?style=flat&labelColor=00175A)](src/amex-assistant.user.js)
 
 <br>
 
-[![Install for Chrome](https://img.shields.io/badge/Chrome%20Web%20Store-%E5%AE%89%E8%A3%85%20%C2%B7%20Install-006FCF?style=for-the-badge&labelColor=00175A&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/amex-assistant/cdflnehplopihjenmpdpimigmajdfoon)
-&nbsp;
-[![Install as userscript](https://img.shields.io/badge/Greasy%20Fork-%E6%B2%B9%E7%8C%B4%E8%84%9A%E6%9C%AC%20%C2%B7%20Userscript-006FCF?style=for-the-badge&labelColor=00175A&logo=tampermonkey&logoColor=white)](https://greasyfork.org/en/scripts/585884-amex-assistant)
+<a href="https://chromewebstore.google.com/detail/amex-assistant/cdflnehplopihjenmpdpimigmajdfoon"><img src="docs/badges/install-chrome.svg" alt="Install from the Chrome Web Store" height="56"></a>
+&nbsp;&nbsp;
+<a href="https://greasyfork.org/en/scripts/585884-amex-assistant"><img src="docs/badges/install-userscript.svg" alt="Install as a userscript from Greasy Fork" height="56"></a>
 
 <br><br>
 
