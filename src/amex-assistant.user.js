@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      0.23.0
+// @version      1.0.0
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -182,6 +182,8 @@
     zh: {
       panelTitle: 'Amex 助手',
       launcherTitle: 'Amex 助手',
+      launcherRunning: '提交中',
+      launcherDone: '已完成',
       refresh: '刷新',
       close: '关闭',
       // Target-language on purpose (pairs with the 'EN' glyph at the call
@@ -190,9 +192,9 @@
       // Offers list
       listSubtitle: '{offers} 个 offer · {cards} 张卡',
       searchOffers: '搜索商家或 offer',
-      allCards: '所有卡',
+      allCards: '全部卡',
       multiOnly: '只看多卡可加',
-      selectAllAddable: '全选当前可加',
+      selectAllAddable: '全选可加',
       clearSelection: '清空',
       cardsReadFailed: '{n} 张卡读取失败。',
       cardsReadFailedNote:
@@ -205,11 +207,11 @@
       addedToAll: '已添加到 {n} 张卡',
       addableN: '可加 {n}',
       addedN: '已加 {n}',
-      chooseCards: '选择要加到哪些卡',
+      chooseCards: '加到哪些卡',
       addedMark: '已加 ✓',
       expiresShort: '至 {date}',
       // Last-run strip
-      lastRunPrefix: '上次添加：',
+      lastRunPrefix: '上次执行：',
       lastRunConfirmed: '{n} 确认已加',
       lastRunFailed: '{n} 失败',
       lastRunDedupe: '{n} 疑似去重',
@@ -223,9 +225,9 @@
       loadingCardList: '正在读取卡列表…',
       loadingReadOnly: '这里只读取 offer 列表，不会改动账户',
       // Confirm dialog
-      confirmTitle: '提交 {n} 个添加？',
-      confirmSub: '同一 offer 的卡同时提交，不同 offer 之间自动间隔几秒；' +
-          '提交后不可撤销。',
+      confirmTitle: '同时提交 {n} 个添加？',
+      confirmSub: '一次性同时提交，提交后不可撤销',
+      confirmThrottle: '一次提交超过 30 个添加可能触发限流，建议分批',
       confirmCards: '{n} 张卡',
       confirmMeta: '共 {offers} 个 offer · {adds} 次添加 · 完成后逐卡确认',
       cancel: '取消',
@@ -238,7 +240,22 @@
       submitFail: '提交失败',
       submitting: '提交中',
       notSubmitted: '未提交',
-      runningNote: '提交完成后会重新读取已添加列表，逐张卡核对结果',
+      runningNoteLead: '请勿关闭本页',
+      runningNote: ' · 全部完成后重新读取已加列表逐卡确认',
+      readFailBanner: '读取失败，以下结果不含这张卡',
+      // First-run trust screen
+      trustTitle1: '把一个 offer，',
+      trustTitle2: '加到你的每张卡',
+      trustDesc: '在 Amex 网页上 Add to Card 之后，其它卡就看不到这个 offer ' +
+        '了。Amex 助手把你选的 offer 同时加到多张卡，并逐卡确认结果。',
+      trustB1Lead: '纯本地运行',
+      trustB1Rest: ' — 零后端、零上报，代码可审计',
+      trustB2Lead: '先只读',
+      trustB2Rest: ' — 打开只读取 Offer 列表，不改动账户',
+      trustB3Lead: '你说了算',
+      trustB3Rest: ' — 勾选并确认后才会提交',
+      trustStart: '开始读取',
+      trustFoot: '技术上无法联系任何第三方（@grant none）',
       // Result
       resultTitleOk: '添加完成，已核对',
       resultTitleStopped: '已停止本轮添加',
@@ -257,13 +274,12 @@
       secGhost: '疑似去重 — 接口成功，但复查没看到',
       secUnverified: '无法确认 — 复查未完成',
       retryUnfinished: '重试未完成项',
-      exportCsv: '导出 CSV',
       backToList: '返回列表',
       runInterrupted: '添加过程中断：{msg}',
       // Empty / error
-      emptyTitle: '暂无可加的 offer',
-      emptyBody: '当前 offer 都已添加到可用的卡上。',
-      reload: '↻ 重新读取',
+      emptyTitle: '没有可加的 offer',
+      emptyBody: '所有 offer 都已加到它们可用的卡上。',
+      reload: '重新读取',
       errorTitle: '读取 offer 列表失败',
       errorSessionHint: '登录状态可能已过期。请先在当前页面登录 Amex，再重试。',
       retry: '重试',
@@ -279,18 +295,19 @@
       searchBenefits: '搜索 benefit 或卡',
       sortByExpiry: '按到期时间排序 ',
       unusedOnly: '只看还有余额的',
-      benefitsFootnote: '金额来自 Amex 的 benefit 进度 · 只读查看，不在本地保存数据',
+      benefitsFootnote: '进度按报表返现记录自动归类 · 纯只读，不在本地存任何数据',
       noBenefitsMatch: '没有匹配「{q}」的 benefit',
       noBenefits: '这些卡上没有可追踪的 benefit',
-      leftThisMonth: '本月剩余额度',
-      redeemedYtd: '今年已抵扣',
-      feeOffset: '已抵年费 {spent}/{fee}',
-      trackedOnly: '仅含可自动追踪的项目',
+      leftThisMonth: '本月还没用的',
+      redeemedYtd: '今年已返现',
+      feePayback: '年费回本',
+      feeOffset: '年费回本 {spent}/{fee}',
+      trackedOnly: '仅含可自动追踪项',
       trackedOnly2: '按可追踪项目',
       usedUpSection: '本周期已用完',
       xCards: '×{n} 张卡',
-      notActivated: '待开启',
-      activate: '去开启 ↗',
+      notActivated: '未激活',
+      activate: '去激活 ↗',
       expired: '已过期',
       daysLeft: '还剩 {n} 天',
       // Added (redeem-tracking) sub-view
@@ -318,6 +335,8 @@
     en: {
       panelTitle: 'Amex Assistant',
       launcherTitle: 'Amex Assistant',
+      launcherRunning: 'Submitting',
+      launcherDone: 'Done',
       refresh: 'Refresh',
       close: 'Close',
       // Target-language on purpose; see zh.switchLang.
@@ -359,9 +378,10 @@
       loadingReadOnly: 'Read-only at this step — nothing on the account ' +
           'changes',
       // Confirm dialog
-      confirmTitle: 'Submit {n} addition(s)?',
-      confirmSub: 'Cards on the same offer submit together; different ' +
-          'offers are paced a few seconds apart. This cannot be undone.',
+      confirmTitle: 'Submit all {n} additions at once?',
+      confirmSub: 'All submitted together at once; this cannot be undone',
+      confirmThrottle: 'Submitting over 30 at once may trip rate limits; ' +
+          'consider batching',
       confirmCards: '{n} card(s)',
       confirmMeta: '{offers} offer(s) · {adds} addition(s) · ' +
           'each card is verified afterwards',
@@ -375,7 +395,23 @@
       submitFail: 'Failed',
       submitting: 'Submitting',
       notSubmitted: 'Not submitted',
-      runningNote: 'When done, added lists are re-read to verify each card',
+      runningNoteLead: 'Keep this page open',
+      runningNote: ' · when done, added lists are re-read to verify each card',
+      readFailBanner: 'couldn’t be read; results below exclude it',
+      // First-run trust screen
+      trustTitle1: 'Add one offer',
+      trustTitle2: 'to every card you own',
+      trustDesc: 'Once you Add to Card on the Amex site, your other cards ' +
+        'can no longer see that offer. Amex Assistant adds your chosen ' +
+        'offer to several cards at once, then verifies each card.',
+      trustB1Lead: 'Runs locally',
+      trustB1Rest: ' — no backend, no telemetry, auditable code',
+      trustB2Lead: 'Reads first',
+      trustB2Rest: ' — opening only reads your offer list, changes nothing',
+      trustB3Lead: 'You decide',
+      trustB3Rest: ' — nothing is submitted until you confirm',
+      trustStart: 'Start reading',
+      trustFoot: 'Technically cannot reach any third party (@grant none)',
       // Result
       resultTitleOk: 'Done — verified',
       resultTitleStopped: 'Run stopped early',
@@ -397,13 +433,12 @@
       secGhost: 'Possible duplicate — success reported, absent on re-read',
       secUnverified: 'Unconfirmed — verification incomplete',
       retryUnfinished: 'Retry unfinished',
-      exportCsv: 'Export CSV',
       backToList: 'Back to list',
       runInterrupted: 'Run interrupted: {msg}',
       // Empty / error
       emptyTitle: 'No offers to add',
       emptyBody: 'Every offer is already on the cards it can go to.',
-      reload: '↻ Reload',
+      reload: 'Reload',
       errorTitle: 'Could not read the offers list',
       errorSessionHint: 'Your session may have expired. Sign in to Amex on ' +
           'this page, then retry.',
@@ -427,6 +462,7 @@
       noBenefits: 'No trackable benefits on these cards',
       leftThisMonth: 'Left this month',
       redeemedYtd: 'Redeemed this year',
+      feePayback: 'Fee payback',
       feeOffset: 'Fee offset {spent}/{fee}',
       trackedOnly: 'Auto-tracked credits only',
       trackedOnly2: 'Tracked credits only',
@@ -2089,9 +2125,7 @@
 
   /** Re-labels the launcher pill after a language change. */
   function updateLauncherText() {
-    if (!launcherButton) return;
-    const label = launcherButton.shadowRoot.querySelector('.t');
-    if (label) label.textContent = t('launcherTitle');
+    renderLauncherContent();
   }
 
   // ---- position persistence -------------------------------------------------
@@ -2263,132 +2297,196 @@
     :host { all: initial; }
     * { box-sizing: border-box; }
     .p {
-      --blue: #006FCF; --navy: #00175A; --green: #0B7A3E; --red: #C8102E;
-      --amber: #9A6A00; --ink: #26282A; --sub: #55585D; --mut: #7A7D82;
-      --fog: #9A9DA2; --line: #E7E8EA; --line2: #EFF0F1; --card: #F2F3F4;
-      font: 13px/1.4 'Helvetica Neue', Helvetica, system-ui, sans-serif;
-      color: var(--ink); background: #fff; border: 1px solid #d9dbde;
-      border-radius: 6px; width: 400px; max-height: 80vh; display: flex;
+      --blue: #006FCF; --blue2: #0264BE; --bluesoft: #0A6ACB;
+      --navy: #0B1F4E; --navy2: #00175A; --green: #0B7A3E; --red: #C8102E;
+      --amber: #9A6A00; --ink: #1A1E28; --ink2: #3A3F4A; --sub: #5A5F6A;
+      --sub2: #6A6F7A; --mut: #8A8F99; --fog: #9CA1AB; --faint: #B4B9C2;
+      --line: #ECEEF2; --line2: #EEF0F3; --line3: #F2F3F5; --bd: #E9EAEE;
+      --bd2: #E7E9EE; --chip: #F2F4F7; --chip2: #E7EAEF; --panel: #F5F6F8;
+      --amberbg: #FBF6E8; --amberbd: #F0E3BC; --ambertx: #7A5600;
+      --se: superellipse(1.6);
+      font: 13px/1.4 'Public Sans', 'Helvetica Neue', Helvetica, system-ui,
+        sans-serif;
+      color: var(--ink); background: var(--panel); border: 1px solid var(--bd);
+      border-radius: 18px; corner-shape: var(--se);
+      width: 400px; max-height: 86vh; display: flex;
       flex-direction: column; overflow: hidden;
-      box-shadow: 0 8px 30px rgba(0,23,90,.18);
+      box-shadow: 0 32px 80px -12px rgba(0,23,90,.2), 0 2px 6px rgba(0,23,90,.05);
       transform-origin: top right;
       transition: opacity .18s ease, transform .18s ease;
     }
     /* Collapsed state used to grow-in on open and shrink-out on close. */
     .p.closing { opacity: 0; transform: scale(.9); }
-    .hd {
-      display: flex; flex-direction: column; background: #fff;
-      border-bottom: 2px solid var(--blue); flex: none;
-    }
-    .hd.err { border-bottom-color: var(--red); }
-    .hd.tabbed { border-bottom: 1px solid var(--line); }
-    /* Drag handle: the title row moves the panel; its buttons keep pointer. */
-    .hrow { display: flex; align-items: center; gap: 11px; padding: 14px 18px;
+    /* The superellipse (squircle) corner applies to every rounded surface;
+       true circles keep border-radius:50% and are excluded on purpose. */
+    .subpills, .subpill, .sr input, .cfil, .grp, .cards, .logo, .cnt .c,
+    .go, .lnk.rerun, .info, .banner, .cfdlg, .cf-list, .bactivate, .msg .btn,
+    .brow, .bgrp, .bsec, .bstats .c, .agrp, .actbtn, .ic.brand, .cfsw, .sw,
+    .expandbox, .trust-b, .cir { corner-shape: var(--se); }
+
+    /* ---- header ---- */
+    .hd { display: flex; flex-direction: column; background: #fff; flex: none; }
+    .hrow { display: flex; align-items: center; gap: 12px;
+      padding: 16px 20px 14px; border-bottom: 1px solid var(--line2);
       cursor: move; user-select: none; }
-    .hd.tabbed .hrow { padding: 14px 18px 12px; }
-    .mtabs { display: flex; gap: 22px; padding: 0 18px; font-size: 12.5px; }
-    .mtab { color: var(--sub); padding-bottom: 10px; cursor: pointer;
-      border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .hd.tabbed .hrow { padding: 16px 20px 12px; border-bottom: none; }
+    .hd.err .hrow { border-bottom: 2px solid var(--red); }
+    .hd.warn .hrow { border-bottom: 2px solid #D9A62E; }
+    .mtabs { display: flex; gap: 22px; padding: 0 20px; font-size: 12.5px;
+      background: #fff; border-bottom: 1px solid var(--line2); }
+    .mtab { color: var(--sub2); padding: 8px 0 10px; cursor: pointer;
+      border-bottom: 2px solid transparent; }
     .mtab.on { font-weight: 700; color: var(--navy);
       border-bottom-color: var(--blue); }
-    .ic {
-      width: 30px; height: 30px; border-radius: 5px; background: var(--blue);
-      color: #fff; display: flex; align-items: center; justify-content: center;
-      font-size: 17px; font-weight: 600; line-height: 1; flex: none;
-    }
-    /* Brand icon carries its own artwork/background. */
-    .ic.brand { background: none; border-radius: 0; }
+    .ic.brand { width: 34px; height: 34px; flex: none; background: none;
+      border-radius: 0; display: block; }
+    .ic.brand svg { display: block; }
+    .ic { width: 34px; height: 34px; border-radius: 9px; corner-shape: var(--se);
+      background: var(--blue); color: #fff; display: flex; align-items: center;
+      justify-content: center; font-size: 17px; font-weight: 700; flex: none; }
     .hd .tt { flex: 1; min-width: 0; }
-    .t1 { font-size: 14.5px; font-weight: 800; color: var(--navy);
-      letter-spacing: .1px; }
+    .t1 { font-size: 15px; font-weight: 800; color: var(--navy);
+      letter-spacing: -.2px; }
     .t2 { font-size: 10.5px; color: var(--mut); margin-top: 1px;
+      font-variant-numeric: tabular-nums;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rf {
-      width: 28px; height: 28px; border-radius: 50%; border: 1px solid #E3E5E8;
-      background: #fff; color: #53565A; font-size: 15px; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; flex: none;
-      transition: background .15s ease, border-color .15s ease;
-    }
-    .rf:hover { background: #F2F3F4; border-color: #C9CCD0; }
-    .cl { width: 28px; height: 28px; border-radius: 50%; margin-right: -6px;
-      font-size: 18px; color: #8B8E93; cursor: pointer; line-height: 1;
-      background: none; border: none; flex: none; display: flex;
+    .rf { width: 30px; height: 30px; border-radius: 50%; border: none;
+      background: var(--chip); color: var(--sub); font-size: 15px;
+      cursor: pointer; display: flex; align-items: center;
+      justify-content: center; flex: none; transition: background .15s ease; }
+    .rf:hover { background: var(--chip2); }
+    .rf.lang { font-size: 10.5px; font-weight: 800; letter-spacing: .2px;
+      color: var(--sub2); }
+    .cl { width: 30px; height: 30px; border-radius: 50%; margin-right: -4px;
+      font-size: 15px; color: var(--sub); cursor: pointer; line-height: 1;
+      background: var(--chip); border: none; flex: none; display: flex;
       align-items: center; justify-content: center;
-      transition: background .15s ease, color .15s ease; }
-    .cl:hover { background: #F2F3F4; color: #26282A; }
-    .rf.lang { font-size: 10.5px; font-weight: 700; letter-spacing: .3px; }
-    .body { overflow-y: auto; }
-    .sr { padding: 12px 18px 0; }
-    .sr input {
-      width: 100%; border: 1px solid #D5D7DB; border-radius: 4px;
-      padding: 8px 12px; font: inherit; color: var(--ink); outline: none;
-    }
+      transition: background .15s ease; }
+    .cl:hover { background: var(--chip2); }
+
+    /* ---- body & shared ---- */
+    .body { overflow-y: auto; padding-bottom: 6px; }
+    /* Full-width status banners that sit directly under the header/tabs. */
+    .banner { display: flex; align-items: center; gap: 9px;
+      background: var(--amberbg); border-bottom: 1px solid var(--amberbd);
+      padding: 9px 20px; font-size: 11px; color: var(--ambertx);
+      line-height: 1.5; }
+    .banner .ico { font-size: 12px; color: var(--amber); line-height: 1; }
+    .banner .sp { flex: 1; }
+    .banner b { color: var(--ambertx); }
+    .banner .act { font-size: 11px; font-weight: 700; color: var(--blue);
+      cursor: pointer; white-space: nowrap; }
+    .lastrun { display: flex; align-items: center; gap: 5px; padding: 8px 20px;
+      background: #fff; border-bottom: 1px solid var(--line2);
+      font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
+    .lastrun .sp { flex: 1; }
+    .lastrun b { font-weight: 700; }
+
+    /* ---- sub-tab pills (可加 / 已加) + sort ---- */
+    .subbar { display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px 0; }
+    .subpills { display: flex; background: #E9EBF0; border-radius: 8px;
+      padding: 2px; }
+    .subpill { padding: 5px 14px; font-size: 11.5px; font-weight: 600;
+      color: var(--sub2); cursor: pointer; border-radius: 6px;
+      corner-shape: var(--se); font-variant-numeric: tabular-nums; }
+    .subpill.on { background: #fff; font-weight: 700; color: var(--navy);
+      box-shadow: 0 1px 3px rgba(0,23,90,.12); }
+    .subbar .sp { flex: 1; }
+    .sortsel { font-size: 11.5px; color: var(--sub2); cursor: pointer;
+      white-space: nowrap; }
+
+    /* ---- search ---- */
+    .sr { position: relative; padding: 12px 16px 0; }
+    .sr::before { content: '⌕'; position: absolute; left: 29px; top: 21px;
+      font-size: 14px; color: var(--fog); pointer-events: none; }
+    .sr input { width: 100%; border: 1px solid var(--bd2); border-radius: 9px;
+      corner-shape: var(--se); padding: 9px 13px 9px 32px; font: inherit;
+      font-size: 12.5px; color: var(--ink); outline: none; background: #fff;
+      box-shadow: inset 0 1px 2px rgba(0,23,90,.03); }
+    .sr input::placeholder { color: var(--fog); }
     .sr input:focus { border-color: var(--blue); }
-    .tabwrap { position: relative; }
-    /* Fade the right edge so the overflowing card tabs read as scrollable
-       without a scrollbar chrome. */
-    .tabwrap::after {
-      content: ''; position: absolute; top: 0; right: 0; bottom: 1px;
-      width: 28px; pointer-events: none;
-      background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff);
-    }
-    .tabs {
-      display: flex; gap: 18px; padding: 12px 18px 0; overflow-x: auto;
-      border-bottom: 1px solid var(--line); font-size: 12px;
-      scrollbar-width: none; -ms-overflow-style: none;
-    }
-    .tabs::-webkit-scrollbar { display: none; }
-    .tab { padding-bottom: 9px; color: var(--sub); cursor: pointer;
-      white-space: nowrap; border-bottom: 2px solid transparent; }
-    .tab.on { font-weight: 700; color: var(--navy); border-bottom-color: var(--blue); }
-    .tab .n { color: var(--fog); }
-    .tb {
-      display: flex; align-items: center; padding: 9px 18px; font-size: 11.5px;
-      border-bottom: 1px solid var(--line2);
-    }
+
+    /* ---- card filter chips ---- */
+    .cfrow { display: flex; gap: 6px; padding: 12px 16px 0; overflow-x: auto;
+      scrollbar-width: none; -ms-overflow-style: none; }
+    .cfrow::-webkit-scrollbar { display: none; }
+    .cfil { display: flex; align-items: center; gap: 6px; background: #fff;
+      border: 1px solid var(--bd); color: var(--ink2); font-size: 11.5px;
+      font-weight: 600; border-radius: 15px; padding: 6px 12px;
+      white-space: nowrap; cursor: pointer; }
+    .cfil.on { background: var(--navy); color: #fff; border-color: var(--navy);
+      padding: 6px 13px; }
+    .cfsw { width: 16px; height: 11px; border-radius: 2px; flex: none;
+      overflow: hidden; background: linear-gradient(135deg,#dfe2e6,#b3b9c1); }
+    .cfsw img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* ---- select toolbar (只看多卡可加) ---- */
+    .tb { display: flex; align-items: center; padding: 12px 20px 8px;
+      font-size: 11.5px; }
     .tb label { display: flex; align-items: center; gap: 6px; color: var(--sub);
       cursor: pointer; }
     .tb .sp { flex: 1; }
-    .tb .ac { display: flex; gap: 14px; font-weight: 600; }
+    .tb .ac { display: flex; gap: 14px; font-weight: 700; }
     .tb .ac a { cursor: pointer; }
     .a-blue { color: var(--blue); }
     .a-mut { color: var(--fog); }
-    .list { display: flex; flex-direction: column; }
-    .row { display: flex; gap: 11px; padding: 13px 18px; align-items: center;
-      border-bottom: 1px solid var(--line2); }
-    .grp.done { opacity: .5; }
-    .grp.exp { box-shadow: inset 2px 0 0 var(--blue); background: #FBFDFF; }
-    .grp.exp > .row { border-bottom: none; padding-bottom: 8px; }
-    .logo {
-      width: 40px; height: 40px; border-radius: 4px; flex: none; overflow: hidden;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; background: #E7F0FA; color: #1B62A8;
-    }
+
+    /* ---- offer list: each group is its own white card ---- */
+    .list { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; }
+    .grp { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      corner-shape: var(--se);
+      box-shadow: 0 1px 2px rgba(0,23,90,.04), 0 16px 32px -24px rgba(0,23,90,.18);
+      transition: box-shadow .15s ease, border-color .15s ease; }
+    .grp:hover { border-color: #DFE3EA;
+      box-shadow: 0 2px 4px rgba(0,23,90,.05), 0 20px 40px -20px rgba(0,23,90,.28); }
+    .grp.done { opacity: .55; }
+    .grp.exp { background: linear-gradient(180deg,#FEFEFF,#F7FBFF);
+      border-color: rgba(0,111,207,.3);
+      box-shadow: 0 12px 28px -14px rgba(0,111,207,.35); }
+    .grp.exp:hover { border-color: rgba(0,111,207,.4); }
+    .row { display: flex; gap: 11px; padding: 13px 14px; align-items: center; }
+    /* Expandable rows (not fully-added) are clickable to reveal the card list. */
+    .grp:not(.done) > .row { cursor: pointer; }
+    .grp:not(.done) > .row input[type=checkbox] { cursor: pointer; }
+    .grp.exp > .row { padding: 13px 14px 9px; }
+    .logo { width: 40px; height: 40px; border-radius: 9px; corner-shape: var(--se);
+      flex: none; overflow: hidden; display: flex; align-items: center;
+      justify-content: center; font-size: 12px; font-weight: 700;
+      background: #E7F0FA; color: #1B62A8;
+      box-shadow: inset 0 0 0 1px rgba(20,60,120,.05); }
     .logo img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
     .mn { flex: 1; min-width: 0; }
     .nm { font-size: 13px; font-weight: 700; color: var(--ink);
+      letter-spacing: -.1px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ds { font-size: 12px; color: var(--sub); margin-top: 1px; overflow: hidden;
+    .ds { font-size: 11.5px; color: var(--sub2); margin-top: 1px; overflow: hidden;
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .rt { text-align: right; flex: none; }
-    .bd { font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer;
-      font-variant-numeric: tabular-nums; color: var(--blue); }
-    .bd .dot { color: #C9CCD0; }
-    .bd .en { color: var(--green); }
-    .bd .car { font-size: 9px; margin-left: 2px; }
-    .ex { font-size: 10.5px; color: var(--fog); margin-top: 2px;
+    .bd { display: inline-block; font-size: 11px; font-weight: 600;
+      color: var(--bluesoft); background: rgba(0,111,207,.07);
+      border-radius: 11px; padding: 3px 9px; white-space: nowrap; cursor: pointer;
       font-variant-numeric: tabular-nums; }
-    .done-tag { font-size: 11px; color: var(--green); white-space: nowrap; }
-    .cards { margin: 0 18px 13px 67px; display: flex; flex-direction: column; }
-    .cards .lb { font-size: 10px; font-weight: 700; color: var(--fog);
-      letter-spacing: .6px; padding: 4px 0 7px; }
+    .bd .dot, .bd .en, .bd .car { color: inherit; }
+    .ex { font-size: 10.5px; color: var(--fog); margin-top: 4px;
+      font-variant-numeric: tabular-nums; }
+    .runbadge { display: inline-flex; gap: 6px; font-size: 11px; font-weight: 700;
+      font-variant-numeric: tabular-nums; margin-bottom: 3px; }
+    .done-tag { font-size: 10.5px; font-weight: 700; color: var(--green);
+      white-space: nowrap; }
+    /* expanded "加到哪些卡" inset box */
+    .cards { margin: 0 14px 12px 65px; display: flex; flex-direction: column;
+      gap: 2px; background: #F7F9FC; border: 1px solid #EDF2F9;
+      border-radius: 8px; corner-shape: var(--se); padding: 10px 12px; }
+    .cards .lb { font-size: 9.5px; font-weight: 800; color: var(--fog);
+      letter-spacing: .7px; padding-bottom: 5px; }
     .ccard { display: flex; align-items: center; gap: 9px; font-size: 12px;
       color: var(--ink); padding: 4px 0; cursor: pointer; }
-    .ccard.off { color: #B4B7BB; cursor: default; }
-    .sw { width: 28px; height: 18px; border-radius: 2.5px; flex: none;
+    .ccard.off { color: var(--faint); cursor: default; }
+    .sw { width: 28px; height: 18px; border-radius: 4px; flex: none;
       overflow: hidden; background: linear-gradient(135deg,#dfe2e6,#b3b9c1); }
     .sw img { width: 100%; height: 100%; object-fit: cover; }
-    .ccard .mk { margin-left: auto; font-size: 10.5px; font-weight: 600; }
+    .ccard .mk { margin-left: auto; font-size: 10.5px; font-weight: 700; }
     .ccard .mk.en { color: var(--green); }
     .ccard .mk.r-failed { color: var(--red); }
     .ccard .mk.r-ghost { color: var(--amber); }
@@ -2397,148 +2495,293 @@
     input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--blue);
       flex: none; }
     .ccard input[type=checkbox] { width: 14px; height: 14px; }
-    .ft { border-top: 1px solid var(--line); padding: 12px 18px; display: flex;
-      align-items: center; gap: 12px; background: #fff; flex: none; }
-    .ft .sm { flex: 1; font-size: 12px; color: var(--sub); }
+    .tb input[type=checkbox] { width: 13px; height: 13px; }
+
+    /* ---- footer: an elevated action bar that reads as separate from the
+       scrolling list above it ---- */
+    .ft { padding: 12px 16px 14px; display: flex; align-items: center;
+      gap: 12px; flex: none; background: var(--panel);
+      border-top: 1px solid var(--bd);
+      box-shadow: 0 -8px 18px -12px rgba(0,23,90,.14); }
+    .ft .sm { flex: 1; font-size: 12px; color: var(--sub);
+      font-variant-numeric: tabular-nums; }
     .ft .sm b { color: var(--ink); }
     .go { background: var(--blue); color: #fff; font-size: 13px; font-weight: 700;
-      border: none; border-radius: 4px; padding: 10px 22px; cursor: pointer;
-      white-space: nowrap; }
-    .go:disabled { opacity: .55; cursor: default; }
-    .cnt { display: flex; background: #fff; border-bottom: 1px solid var(--line); }
-    .cnt .c { flex: 1; padding: 14px 0; text-align: center; }
-    .cnt .c .n { font-size: 21px; font-weight: 800;
+      letter-spacing: .2px; border: none; border-radius: 9px;
+      corner-shape: var(--se); padding: 11px 24px; cursor: pointer;
+      white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,111,207,.5);
+      transition: background .15s ease; }
+    .go:hover { background: var(--blue2); }
+    .go:disabled { opacity: .5; cursor: default; box-shadow: none; }
+
+    /* ---- stat tiles (results / running / added) ---- */
+    .cnt { display: flex; gap: 8px; padding: 14px 16px 0; }
+    .cnt .c { flex: 1; background: #fff; border: 1px solid var(--line);
+      border-radius: 12px; corner-shape: var(--se); padding: 13px 0;
+      text-align: center; }
+    .cnt .c .n { font-size: 20px; font-weight: 800;
       font-variant-numeric: tabular-nums; }
+    .cnt.money .c .n { font-size: 18px; }
+    .cnt.lg .c .n { font-size: 22px; }
     .cnt .c .l { font-size: 10.5px; color: var(--sub); margin-top: 2px; }
-    .cnt .sep { width: 1px; background: var(--line); margin: 12px 0; }
+    .cnt .sep { display: none; }
     .g { color: var(--green); } .r { color: var(--red); }
     .b { color: var(--blue); } .am { color: var(--amber); }
-    .bar { height: 4px; border-radius: 2px; background: #EDEEF0; overflow: hidden; }
-    .bar > div { height: 100%; background: var(--blue); transition: width .2s; }
-    .note { font-size: 11px; color: var(--mut); }
-    .info { margin: 12px 18px 0; background: #F7F8F9; border: 1px solid #EDEEF0;
-      border-radius: 4px; padding: 9px 12px; font-size: 11px; color: var(--sub);
-      line-height: 1.55; }
+    .navy { color: var(--navy); }
+    .bar { height: 4px; border-radius: 2px; background: #E7EAEF; overflow: hidden; }
+    .bar > div { height: 100%; border-radius: 2px; background: var(--blue);
+      transition: width .2s; }
+    .note { font-size: 10.5px; color: var(--fog); line-height: 1.5; }
+
+    /* ---- info / explainer cards ---- */
+    .info { margin: 12px 16px 0; background: var(--amberbg);
+      border: 1px solid var(--amberbd); border-radius: 8px; corner-shape: var(--se);
+      padding: 10px 13px; font-size: 11px; color: var(--sub);
+      line-height: 1.6; }
     .info b { color: var(--amber); }
-    .sh { font-size: 10px; font-weight: 700; color: var(--fog);
-      letter-spacing: .6px; padding: 10px 0 5px; }
-    .si { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0;
-      align-items: baseline;
-      border-bottom: 1px solid var(--line2); font-size: 12px; color: var(--ink); }
-    .si:last-child { border-bottom: none; }
-    /* Failed rows carry a long message — stack it under the card, left-aligned,
-       instead of wrapping ragged beside it. */
-    .si.col { flex-direction: column; align-items: stretch;
-      justify-content: flex-start; gap: 3px; }
+
+    /* ---- grouped result list ---- */
+    .reslist { margin: 12px 16px 0; background: #fff; border: 1px solid var(--line);
+      border-radius: 12px; corner-shape: var(--se); overflow: hidden; }
+    .sh { font-size: 10px; font-weight: 800; color: var(--fog);
+      letter-spacing: .7px; padding: 11px 14px 5px; }
+    .si { display: flex; justify-content: space-between; gap: 8px;
+      padding: 7px 14px; align-items: baseline;
+      border-bottom: 1px solid var(--line3); font-size: 12px; color: var(--ink); }
+    .reslist > .si:last-child { border-bottom: none; }
+    .si.col { flex-direction: column; align-items: stretch; gap: 3px; }
     .si.col .si-msg { font-size: 11px; line-height: 1.45; text-align: left; }
-    .ri { display: flex; align-items: center; gap: 10px; padding: 8px 0;
-      border-bottom: 1px solid var(--line2); font-size: 12px; color: var(--ink); }
+    .si .st { font-weight: 700; white-space: nowrap; }
+
+    /* ---- running rows ---- */
+    .rl { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 0; }
+    .ri { display: flex; align-items: center; gap: 11px; padding: 11px 14px;
+      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      corner-shape: var(--se); font-size: 12px; color: var(--ink); }
     .ri .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
       text-overflow: ellipsis; }
     .ri .st { font-size: 11px; font-weight: 600; }
     .spin { width: 16px; height: 16px; border-radius: 50%; flex: none;
-      border: 2px solid #D4E8F8; border-top-color: var(--blue);
+      border: 2px solid #D9E8F8; border-top-color: var(--blue);
       animation: dvspin .9s linear infinite; }
     @keyframes dvspin { to { transform: rotate(360deg); } }
-    .msg { padding: 34px 24px; text-align: center; }
+
+    /* ---- empty / error / message views ---- */
+    .msg { padding: 32px 24px 34px; text-align: center; }
     .msg .cir { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 12px;
-      display: flex; align-items: center; justify-content: center; font-size: 20px; }
-    .msg .cir.ok { background: #E9F5EE; color: var(--green); }
-    .msg .cir.bad { background: #FCEDEF; color: var(--red); font-weight: 700; }
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px; }
+    .msg .cir.ok { background: #EAF3EC; color: var(--green); }
+    .msg .cir.bad { background: #FCEDEF; color: var(--red); font-weight: 800;
+      font-size: 18px; }
+    .msg .cir.warn { background: var(--amberbg); color: var(--amber);
+      font-weight: 800; font-size: 18px; }
     .msg .h { font-size: 13.5px; font-weight: 700; color: var(--ink); }
     .msg .txt { font-size: 12px; color: var(--mut); margin-top: 5px;
-      line-height: 1.55; }
-    .msg .btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px;
-      border: 1px solid #D5D7DB; border-radius: 4px; padding: 8px 16px;
-      font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; }
-    .msg .btn.pri { background: var(--blue); color: #fff; border-color: var(--blue); }
-    .lnk { font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; }
-    .lnk.rerun { border: 1px solid var(--red); color: var(--red); border-radius: 4px;
-      padding: 8px 16px; font-weight: 700; }
-    /* Benefits tab */
-    .bstats { display: flex; background: #fff;
-      border-bottom: 1px solid var(--line); }
-    .bcol { padding: 13px 0; }
-    .bcol.l { flex: 1.2; padding-left: 18px; }
-    .bcol.m { flex: 1; text-align: center; }
-    .bcol.r { flex: 1.2; padding-right: 18px; text-align: right; }
-    .bval { font-size: 19px; font-weight: 800;
+      line-height: 1.6; }
+    .msg .btn { display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 16px; border: 1px solid #E2E5EA; border-radius: 9px;
+      corner-shape: var(--se); padding: 9px 16px; font-size: 12px;
+      font-weight: 700; color: var(--blue); cursor: pointer; background: #fff;
+      transition: background .15s ease; }
+    .msg .btn:hover { background: #F7F8FA; }
+    .msg .btn.pri { background: var(--blue); color: #fff; border-color: var(--blue);
+      padding: 10px 22px; box-shadow: 0 6px 16px -8px rgba(0,111,207,.5); }
+    .msg .btn.pri:hover { background: var(--blue2); }
+    .msg .btns { display: flex; gap: 10px; justify-content: center;
+      margin-top: 16px; }
+    .msg .btns .btn { margin-top: 0; }
+    .lnk { font-size: 12px; font-weight: 700; color: var(--blue); cursor: pointer; }
+    .lnk.rerun { border: 1px solid #E9C6CC; color: var(--red); border-radius: 9px;
+      corner-shape: var(--se); padding: 9px 16px; transition: background .15s ease; }
+    .lnk.rerun:hover { background: #FCF5F6; }
+
+    /* ---- first-run trust screen ---- */
+    .trust { background: #fff; padding: 22px 24px; }
+    .trust-t { font-size: 17px; font-weight: 800; color: var(--navy);
+      letter-spacing: -.3px; line-height: 1.4; }
+    .trust-d { font-size: 12px; color: var(--sub2); line-height: 1.7;
+      margin-top: 8px; }
+    .trust-list { display: flex; flex-direction: column; gap: 8px;
+      margin-top: 18px; }
+    .trust-b { display: flex; gap: 11px; align-items: center; background: #F7F9FC;
+      border: 1px solid #EDF2F9; border-radius: 8px; corner-shape: var(--se);
+      padding: 10px 13px; font-size: 12px; color: #4A4F5A; line-height: 1.5; }
+    .trust-b .ck { width: 26px; height: 26px; border-radius: 6px;
+      corner-shape: var(--se); background: #E7F0FA; color: #1B62A8;
+      font-size: 12px; font-weight: 800; display: flex; align-items: center;
+      justify-content: center; flex: none; }
+    .trust-b b { color: var(--ink); }
+    .trust .go { display: block; width: 100%; text-align: center;
+      margin-top: 20px; padding: 12px 0; }
+    .trust-foot { font-size: 10.5px; color: var(--fog); text-align: center;
+      margin-top: 10px; }
+    .trust-langs { display: flex; gap: 10px; justify-content: center;
+      margin-top: 14px; }
+    .trust-lang { font-size: 12px; font-weight: 700; color: var(--sub2);
+      border: 1px solid #E2E5EA; border-radius: 9px; corner-shape: var(--se);
+      padding: 8px 18px; cursor: pointer; min-width: 96px; text-align: center;
+      transition: background .15s ease; }
+    .trust-lang:hover { background: #F7F8FA; }
+    .trust-lang.on { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+    /* ---- skeleton (loading rows / confirm backdrop) ---- */
+    .skwrap { display: flex; flex-direction: column; gap: 8px;
+      padding: 14px 16px 16px; }
+    .skrow { display: flex; gap: 11px; align-items: center; padding: 13px 14px;
+      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      corner-shape: var(--se); }
+    .sklogo { width: 40px; height: 40px; border-radius: 9px; corner-shape: var(--se);
+      flex: none; background: #EEF0F3; }
+    .skmn { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+    .skl { height: 10px; border-radius: 3px; background: #EEF0F3; }
+    .skl.a { width: 55%; }
+    .skl.b { width: 78%; height: 9px; background: #F4F5F7; }
+
+    /* ---- confirm dialog ---- */
+    .cfwrap { display: grid; }
+    .cfwrap > * { grid-area: 1 / 1; min-width: 0; }
+    .cfdim { opacity: .35; pointer-events: none; }
+    .cfov { background: rgba(11,31,78,.32); display: flex; align-items: center;
+      justify-content: center; padding: 24px; position: relative; }
+    .cfdlg { background: #fff; border-radius: 12px; corner-shape: var(--se);
+      width: 100%; box-shadow: 0 24px 64px -12px rgba(0,23,90,.45);
+      overflow: hidden; }
+    .cf-hd { padding: 18px 20px 0; }
+    .cf-t { font-size: 15px; font-weight: 800; color: var(--navy);
+      letter-spacing: -.2px; }
+    .cf-d { font-size: 11.5px; color: var(--mut); line-height: 1.55;
+      margin-top: 4px; }
+    .cf-list { margin: 14px 20px 0; border: 1px solid var(--line);
+      border-radius: 8px; corner-shape: var(--se);
+      max-height: 176px; overflow-y: auto; }
+    .cf-row { display: flex; align-items: center; gap: 10px;
+      padding: 9px 13px; border-bottom: 1px solid var(--line3); font-size: 12px; }
+    .cf-row:last-child { border-bottom: none; }
+    .cf-row .nm { font-weight: 600; color: var(--ink); flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      letter-spacing: 0; }
+    .cf-row .ct { color: var(--sub); font-variant-numeric: tabular-nums;
+      white-space: nowrap; }
+    .cf-meta { padding: 8px 20px 0; font-size: 11px; color: var(--fog);
       font-variant-numeric: tabular-nums; }
+    .cf-warn { margin: 8px 20px 0; background: var(--amberbg);
+      border: 1px solid var(--amberbd); border-radius: 8px; corner-shape: var(--se);
+      padding: 7px 11px; font-size: 10.5px; color: var(--ambertx);
+      line-height: 1.5; }
+    .cf-btns { display: flex; gap: 10px; padding: 14px 20px 18px;
+      justify-content: flex-end; }
+    .cf-cancel { border: 1px solid #E2E5EA; color: var(--sub); font-size: 12.5px;
+      font-weight: 600; border-radius: 9px; corner-shape: var(--se);
+      padding: 9px 18px; cursor: pointer; transition: background .15s ease; }
+    .cf-cancel:hover { background: #F7F8FA; }
+    .cf-ok { background: var(--blue); color: #fff; font-size: 12.5px;
+      font-weight: 700; border-radius: 9px; corner-shape: var(--se);
+      padding: 9px 18px; cursor: pointer; transition: background .15s ease; }
+    .cf-ok:hover { background: var(--blue2); }
+
+    /* ---- Benefits tab ---- */
+    .bstats { display: flex; gap: 8px; padding: 12px 16px 0; }
+    .bstats .c { flex: 1; background: #fff; border: 1px solid var(--line);
+      border-radius: 12px; corner-shape: var(--se); padding: 11px 0;
+      text-align: center; }
+    .bval { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
     .bval.navy { color: var(--navy); }
     .bval.green { color: var(--green); }
     .bval.ink { color: var(--ink); }
     .blbl { font-size: 10.5px; color: var(--sub); margin-top: 2px; }
-    .bsub2 { font-size: 9.5px; color: var(--fog); margin-top: 1px; }
-    .vsep { width: 1px; background: var(--line); margin: 12px 0; }
-    .btb { display: flex; align-items: center; padding: 9px 18px; background: #fff;
-      border-bottom: 1px solid var(--line2); font-size: 11.5px; }
+    .bsub2 { font-size: 9px; color: var(--fog); margin-top: 1px; }
+    .btb { display: flex; align-items: center; padding: 12px 20px 2px;
+      font-size: 11.5px; }
     .btb .sp { flex: 1; }
-    .sortlbl { font-weight: 600; color: var(--ink); cursor: pointer; }
+    .sortlbl { font-weight: 600; color: var(--sub2); cursor: pointer; }
     .caret { font-size: 10px; color: var(--fog); }
     .unused { display: flex; align-items: center; gap: 6px; color: var(--sub);
       cursor: pointer; }
     .unused input[type=checkbox] { width: 13px; height: 13px; }
-    .blist { display: flex; flex-direction: column; background: #fff; }
-    .brow { display: flex; gap: 11px; padding: 12px 18px; align-items: center;
-      border-bottom: 1px solid var(--line2); }
-    .blogo { width: 40px; height: 40px; border-radius: 4px; flex: none;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; }
+    .blist { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; }
+    .bgrp { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      corner-shape: var(--se);
+      box-shadow: 0 1px 2px rgba(0,23,90,.04), 0 16px 32px -24px rgba(0,23,90,.18); }
+    .bgrp.exp { border-color: rgba(0,111,207,.3);
+      box-shadow: 0 12px 28px -14px rgba(0,111,207,.35); }
+    .brow { display: flex; gap: 11px; padding: 13px 14px 7px;
+      align-items: center; }
+    .brow.flat { padding: 13px 14px; }
+    .blogo { width: 40px; height: 40px; border-radius: 9px; corner-shape: var(--se);
+      flex: none; display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+      box-shadow: inset 0 0 0 1px rgba(40,45,60,.05); }
     .bmn { flex: 1; min-width: 0; }
-    .btitle { display: flex; align-items: baseline; gap: 6px; }
+    /* Real benefit names run long ("$300 Digital Entertainment Credit"), so the
+       name flows and wraps freely; the period / multi-card tags sit on their
+       own line below it (a consistent spot regardless of name length). */
+    .btitle { line-height: 1.35; }
     .bname { font-size: 13px; font-weight: 700; color: var(--ink);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      letter-spacing: -.1px; }
+    .btags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+      margin-top: 4px; }
     .bp { font-size: 10px; color: var(--fog); border: 1px solid var(--line);
-      border-radius: 2px; padding: 0 4px; flex: none; }
-    .bx { font-size: 10px; font-weight: 700; color: #005EB0; background: #EAF4FC;
-      border-radius: 2px; padding: 0 5px; flex: none; }
-    .bcard { font-size: 11px; color: var(--mut); margin-top: 2px;
+      border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+    .bx { font-size: 10px; font-weight: 700; color: var(--bluesoft);
+      background: rgba(0,111,207,.07); border-radius: 4px; padding: 0 5px;
+      white-space: nowrap; }
+    .bcard { font-size: 11.5px; color: var(--sub2); margin-top: 1px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bbar { height: 3px; border-radius: 1.5px; background: #EDEEF0;
-      margin-top: 6px; overflow: hidden; }
-    .bbar > div { height: 100%; background: var(--green); }
+    .bbar { display: none; }
     .brt { text-align: right; flex: none; }
     .bamt { font-size: 12.5px; font-weight: 700; color: var(--ink);
       font-variant-numeric: tabular-nums; white-space: nowrap; }
     .bamt .of { font-size: 10.5px; font-weight: 400; color: var(--fog); }
-    .bdays { font-size: 10.5px; color: var(--fog); margin-top: 2px; }
+    .bdays { font-size: 10.5px; color: var(--fog); margin-top: 2px;
+      font-variant-numeric: tabular-nums; }
     .bdays.urgent { font-weight: 700; color: var(--red); }
-    .bcaret { font-size: 10px; color: var(--blue); flex: none; }
+    .bcaret { font-size: 10px; color: var(--fog); flex: none; align-self: center; }
     .binact { font-size: 11px; font-weight: 700; color: var(--amber); }
     .bwhen { font-size: 10.5px; color: var(--fog); margin-top: 2px;
       font-variant-numeric: tabular-nums; }
-    .bactivate { border: 1px solid #D5D7DB; border-radius: 4px;
-      padding: 5px 10px; font-size: 11px; font-weight: 600; color: var(--blue);
-      cursor: pointer; white-space: nowrap; flex: none; }
-    .bgrp { border-bottom: 1px solid var(--line2); }
-    .bgrp.exp { box-shadow: inset 2px 0 0 var(--blue); background: #FBFDFF; }
-    .bgrp > .brow { border-bottom: none; }
-    .bgrp.exp > .brow { padding: 12px 18px 8px 16px; }
-    .bsub { margin: 0 18px 12px 69px; display: flex; flex-direction: column;
-      gap: 8px; }
+    .bactivate { border: 1px solid #E2E5EA; border-radius: 9px;
+      corner-shape: var(--se); padding: 6px 11px; font-size: 11px;
+      font-weight: 700; color: var(--blue); cursor: pointer; white-space: nowrap;
+      flex: none; transition: background .15s ease; }
+    .bactivate:hover { background: #F7F8FA; }
+    .bsub { margin: 0 14px 12px 65px; display: flex; flex-direction: column;
+      gap: 6px; }
     .bsubrow { display: flex; align-items: center; gap: 9px; }
     .bsubcard { font-size: 11.5px; color: var(--ink); width: 56px; flex: none; }
-    .bbar.grow { flex: 1; margin-top: 0; background: #E4E6E9; }
+    .bbar.grow { display: block; flex: 1; height: 3px; border-radius: 1.5px;
+      background: #E7EAEF; overflow: hidden; margin: 0; }
+    .bbar.grow > div { height: 100%; background: var(--green); }
     .bsubamt { font-size: 11px; color: var(--sub); width: 74px;
       text-align: right; flex: none; font-variant-numeric: tabular-nums; }
-    .bsec { display: flex; align-items: center; gap: 8px; padding: 11px 18px;
-      background: #FAFBFC; border-bottom: 1px solid var(--line2); cursor: pointer; }
+    .bdone { display: flex; flex-direction: column; gap: 8px;
+      padding: 8px 16px 0; }
+    .bsec { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      background: #fff; border: 1px solid var(--line);
+      border-radius: 12px; corner-shape: var(--se); cursor: pointer;
+      opacity: .75; }
     .bsec .sp { flex: 1; }
-    .bsec-t { font-size: 12px; font-weight: 600; color: var(--sub); }
-    .bsec-n { font-size: 11px; color: var(--fog); background: #EDEEF0;
-      border-radius: 9px; padding: 1px 8px; font-variant-numeric: tabular-nums; }
-    .bfoot { border-top: 1px solid var(--line); padding: 10px 18px;
-      background: #fff; flex: none; }
-    /* Added (redeem-tracking) sub-view */
-    .sortmini { color: var(--sub); font-size: 11.5px; padding-bottom: 9px;
+    .bsec-t { font-size: 12px; font-weight: 600; color: var(--sub);
       white-space: nowrap; }
-    .navy { color: var(--navy); }
-    .agrp { border-bottom: 1px solid var(--line2); background: #fff; }
-    .agrp.dim .arow, .agrp.dim .acards { opacity: .65; }
-    .arow { display: flex; gap: 11px; padding: 12px 18px 6px;
-      align-items: center; }
-    .acards { margin: 0 18px 12px 69px; display: flex;
-      flex-direction: column; gap: 7px; }
+    .bsec-n { font-size: 11px; color: var(--fog); background: #EEF0F3;
+      border-radius: 9px; padding: 1px 8px; font-variant-numeric: tabular-nums;
+      white-space: nowrap; }
+    .bsec-hint { font-size: 10.5px; color: var(--fog); overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
+    .bfoot { padding: 12px 20px 14px; flex: none; background: var(--panel);
+      border-top: 1px solid var(--bd); }
+
+    /* ---- added (redeem-tracking) sub-view ---- */
+    .agrp { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      corner-shape: var(--se);
+      box-shadow: 0 1px 2px rgba(0,23,90,.04), 0 16px 32px -24px rgba(0,23,90,.18); }
+    .agrp.dim { opacity: .6; box-shadow: none; }
+    .addedlist { display: flex; flex-direction: column; gap: 8px;
+      padding: 14px 16px 0; }
+    .arow { display: flex; gap: 11px; padding: 13px 14px 7px; align-items: center; }
+    .agrp.dim .arow { padding: 13px 14px; }
+    .acards { margin: 0 14px 12px 65px; display: flex; flex-direction: column;
+      gap: 6px; }
     .acrow { display: flex; align-items: center; gap: 9px; }
     .acdig { font-size: 11.5px; color: var(--ink); width: 56px; flex: none; }
     .acst { font-size: 11px; color: var(--fog); white-space: nowrap; }
@@ -2547,70 +2790,10 @@
     .aday { font-size: 10.5px; color: var(--fog);
       font-variant-numeric: tabular-nums; }
     .aday.urgent { font-weight: 700; color: var(--red); }
-    .aday.ok { font-weight: 600; color: var(--green); }
-    .asub { font-size: 10.5px; color: var(--fog); margin-top: 2px;
+    .aday.ok { font-weight: 700; color: var(--green); }
+    .asub { font-size: 10.5px; color: var(--fog); margin-top: 3px;
       font-variant-numeric: tabular-nums; }
-    .asub.ok { color: var(--green); }
-    /* Last-run strip */
-    .lastrun { display: flex; align-items: center; gap: 5px; padding: 7px 18px;
-      background: #FAFBFC; border-bottom: 1px solid var(--line2);
-      font-size: 11px; color: var(--mut); font-variant-numeric: tabular-nums; }
-    .lastrun .sp { flex: 1; }
-    .lastrun .when { color: var(--mut); }
-    /* Confirm dialog. The dimmed backdrop and the overlay stack in one grid
-       cell so the wrap grows to fit whichever is taller — a long offer
-       summary used to overflow the panel's hidden-overflow shell and clip
-       the dialog (buttons included). */
-    .cfwrap { display: grid; }
-    /* min-width: 0 keeps a grid item's auto minimum (min-content — large
-       when the dialog holds nowrap rows) from pushing past the cell. */
-    .cfwrap > * { grid-area: 1 / 1; min-width: 0; }
-    .cfdim { opacity: .4; pointer-events: none; }
-    .cfsk { padding: 14px 18px; display: flex; flex-direction: column;
-      gap: 12px; background: #fff; }
-    .skrow { display: flex; gap: 11px; align-items: center; }
-    .sklogo { width: 40px; height: 40px; border-radius: 4px; flex: none;
-      background: var(--card); }
-    .skmn { flex: 1; display: flex; flex-direction: column; gap: 7px; }
-    .skl { height: 10px; border-radius: 2px; background: var(--card); }
-    .skl.a { width: 52%; }
-    .skl.b { width: 74%; height: 9px; background: #F7F8F9; }
-    .cfov { background: rgba(0, 23, 90, .30);
-      display: flex; align-items: center; justify-content: center;
-      padding: 26px;
-      /* Positioned so it paints above .cfdim, whose opacity forms a stacking
-         context that would otherwise composite over this in-flow overlay. */
-      position: relative; }
-    .cfdlg { background: #fff; border-radius: 6px; width: 100%;
-      box-shadow: 0 12px 32px rgba(0, 23, 90, .35); overflow: hidden; }
-    .cf-hd { padding: 18px 20px 0; }
-    .cf-t { font-size: 15px; font-weight: 800; color: var(--navy); }
-    .cf-d { font-size: 11.5px; color: var(--mut); line-height: 1.55;
-      margin-top: 4px; }
-    .cf-list { margin: 14px 20px 0; border: 1px solid #EDEEF0;
-      border-radius: 4px;
-      /* A large selection scrolls inside the capped list; the meta line
-         below still reports the full totals. */
-      max-height: 176px; overflow-y: auto; }
-    .cf-row { display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px; border-bottom: 1px solid #F2F3F4; font-size: 12px; }
-    .cf-row:last-child { border-bottom: none; }
-    .cf-row .nm { font-weight: 600; color: var(--ink); flex: 1;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cf-row .ct { color: var(--sub); font-variant-numeric: tabular-nums;
-      white-space: nowrap; }
-    .cf-meta { padding: 8px 20px 0; font-size: 11px; color: var(--fog);
-      font-variant-numeric: tabular-nums; }
-    .cf-btns { display: flex; gap: 10px; padding: 14px 20px 18px;
-      justify-content: flex-end; }
-    .cf-cancel { border: 1px solid #D5D7DB; color: var(--sub); font-size: 12.5px;
-      font-weight: 600; border-radius: 4px; padding: 9px 18px; cursor: pointer;
-      transition: background .15s ease; }
-    .cf-cancel:hover { background: #F7F8F9; }
-    .cf-ok { background: var(--blue); color: #fff; font-size: 12.5px;
-      font-weight: 700; border-radius: 4px; padding: 9px 18px; cursor: pointer;
-      transition: background .15s ease; }
-    .cf-ok:hover { background: #005EB0; }
+    .asub.ok { color: var(--green); font-weight: 600; }
   `;
 
   /**
@@ -2687,11 +2870,12 @@
     box.style.display = 'none';
 
     const rt = el('div', {class: 'rt'});
+    let badge = null;
     if (fullyAdded) {
       rt.append(el('div', {class: 'done-tag',
         text: t('addedToAll', {n: group.cards.length})}));
     } else {
-      const badge = el('div', {class: 'bd'});
+      badge = el('div', {class: 'bd'});
       if (addedCount) {
         badge.append(
           el('span', {text: t('addableN', {n: addable.length})}),
@@ -2702,7 +2886,6 @@
         badge.append(el('span', {text: t('addableN', {n: addable.length})}),
           el('span', {class: 'car', text: ' ▾'}));
       }
-      badge.onclick = () => toggleExpand(wrap, box, badge, group);
       rt.append(badge);
     }
     const exp = expiryLabel(group);
@@ -2724,7 +2907,16 @@
     };
 
     if (fullyAdded) wrap.classList.add('done');
-    wrap.append(el('div', {class: 'row'}, pick, logo, main, rt), box);
+    const rowEl = el('div', {class: 'row'}, pick, logo, main, rt);
+    // The whole row toggles the per-card list (except the select checkbox), so
+    // users don't have to aim for the small "可加 N" badge on the right.
+    if (!fullyAdded) {
+      rowEl.onclick = (e) => {
+        if (e.target === pick) return;
+        toggleExpand(wrap, box, badge, group);
+      };
+    }
+    wrap.append(rowEl, box);
     frag.append(wrap);
     return frag;
   }
@@ -2735,11 +2927,9 @@
    */
   function renderRunBadge(states) {
     const n = (s) => states.filter((x) => x === s).length;
-    const badge = el('div', {class: 'bd', style: 'cursor:default'});
-    badge.append(el('span', {class: 'en', text: `✓${n(ResultState.VERIFIED)}`}),
-      el('span', {class: 'dot', text: ' '}),
+    const badge = el('div', {class: 'runbadge'});
+    badge.append(el('span', {class: 'g', text: `✓${n(ResultState.VERIFIED)}`}),
       el('span', {class: 'am', text: `⚠${n(ResultState.GHOST)}`}),
-      el('span', {class: 'dot', text: ' '}),
       el('span', {class: 'r', text: `✗${n(ResultState.FAILED)}`}));
     return badge;
   }
@@ -2822,7 +3012,9 @@
   const BRAND_ICON =
       '<svg width="100%" height="100%" viewBox="0 0 128 128" ' +
       'style="display:block">' +
-      '<rect width="128" height="128" rx="26" fill="#006FCF"></rect>' +
+      '<path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 ' +
+      '90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" ' +
+      'fill="#006FCF"></path>' +
       '<rect x="34" y="26" width="66" height="44" rx="7" ' +
       'fill="#7FB5E5"></rect>' +
       '<rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect>' +
@@ -2833,6 +3025,15 @@
       '<rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect>' +
       '<rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect>' +
       '</svg>';
+
+  /**
+   * The simplified mark for small sizes (the launcher pill): drops the faint
+   * chip line so it stays crisp at 24px, matching the design's 5c artwork.
+   * @const {string}
+   */
+  const BRAND_ICON_SM = BRAND_ICON.replace(
+    '<rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect>',
+    '');
 
   /**
    * Builds the header row.
@@ -2932,6 +3133,9 @@
     }
     const newBody = shell.querySelector('.body');
     if (newBody && keepScroll) newBody.scrollTop = keepScroll;
+    // Keep the collapsed launcher in sync with a background run (e.g. the user
+    // closed the panel mid-submit) so its progress / done state stays live.
+    renderLauncherContent();
   }
 
   /**
@@ -2983,21 +3187,27 @@
   function renderListView(shell) {
     shell.append(renderHeader({
       glyph: '＋', title: t('panelTitle'),
-      subtitle: t('listSubtitle',
+      subtitle: [t('listSubtitle',
         {offers: state.offers.length, cards: state.cards.length}),
+      agoLabel(state.snapshotAt)].filter(Boolean).join(' · '),
       lang: true, refresh: true, close: true, tabs: true,
     }));
 
     const body = el('div', {class: 'body'});
 
-    const search = el('input', {type: 'search', value: state.query,
-      placeholder: t('searchOffers')});
-    search.oninput = (e) => {
-      state.query = e.target.value.trim().toLowerCase();
-      if (state.offersSub === 'added') renderAddedRows(body);
-      else renderRows(body);
-    };
-    body.append(el('div', {class: 'sr'}, search));
+    // Full-width status banners sit right under the tabs.
+    const unreadable = state.cards.filter((c) => c.readFailed);
+    if (unreadable.length) {
+      body.append(el('div', {class: 'banner'},
+        el('span', {class: 'ico', text: '⚠'}),
+        el('div', {class: 'sp'},
+          el('b', {text: unreadable.map((c) => c.shortName).join(' / ')}),
+          ` ${t('readFailBanner')}`),
+        el('div', {class: 'act', text: t('retry'),
+          onclick: () => refresh()})));
+    }
+    if (state.lastRun) body.append(renderLastRunStrip());
+
     body.append(renderOffersSubTabs());
 
     if (state.offersSub === 'added') {
@@ -3008,24 +3218,40 @@
       return;
     }
 
-    const tabs = el('div', {class: 'tabs'});
-    const addTab = (key, label, sub) => {
-      const cls = state.cardFilter === key ? 'tab on' : 'tab';
-      const tab = el('div', {class: cls}, label);
-      if (sub) tab.append(el('span', {class: 'n', text: ` ${sub}`}));
-      tab.onclick = () => {
+    const search = el('input', {type: 'search', value: state.query,
+      placeholder: t('searchOffers')});
+    search.oninput = (e) => {
+      state.query = e.target.value.trim().toLowerCase();
+      renderRows(body);
+    };
+    body.append(el('div', {class: 'sr'}, search));
+
+    // Card filter chips: navy "all" pill + one swatch chip per card.
+    const cfrow = el('div', {class: 'cfrow'});
+    const addChip = (key, label, swToken) => {
+      const chip = el('div',
+        {class: state.cardFilter === key ? 'cfil on' : 'cfil'});
+      if (swToken != null) {
+        const sw = el('span', {class: 'cfsw'});
+        const cd = cardOf(swToken);
+        if (cd?.art) sw.append(el('img', {src: cd.art, alt: ''}));
+        else sw.style.background = swatchStyle(swToken);
+        chip.append(sw);
+      }
+      chip.append(document.createTextNode(label));
+      chip.onclick = () => {
         state.cardFilter = key;
         render();
       };
-      tabs.append(tab);
+      cfrow.append(chip);
     };
-    addTab('all', t('allCards'));
+    addChip('all', t('allCards'));
     for (const card of state.cards) {
       const digits = cardDisplayDigits(cardRaw(card)) ||
           String(card.token).slice(-4);
-      addTab(card.token, familyOf(card), `…${digits}`);
+      addChip(card.token, `…${digits}`, card.token);
     }
-    body.append(el('div', {class: 'tabwrap'}, tabs));
+    body.append(cfrow);
 
     const tb = el('div', {class: 'tb'});
     const multi = el('input', {type: 'checkbox'});
@@ -3043,51 +3269,40 @@
           onclick: () => clearSelection(body)})));
     body.append(tb);
 
-    const unreadable = state.cards.filter((c) => c.readFailed);
-    if (unreadable.length) {
-      body.append(el('div', {class: 'info'},
-        el('b', {text: t('cardsReadFailed', {n: unreadable.length})}),
-        ' ',
-        t('cardsReadFailedNote',
-          {names: unreadable.map((c) => c.shortName).join(' / ')})));
-    }
-
-    if (state.lastRun) body.append(renderLastRunStrip());
-
     const list = el('div', {class: 'list', id: 'list'});
     body.append(list);
     shell.append(body);
     renderRows(body);
 
     shell.append(renderFooter());
+    // renderRows() ran before the footer was in the DOM; sync the summary now
+    // so a returning selection is reflected without needing an interaction.
+    refreshFooter();
   }
 
-  /** @return {!Element} The 可加 | 已加 sub-tab row under the search box. */
+  /** @return {!Element} The 可加 | 已加 segmented pill control + sort. */
   function renderOffersSubTabs() {
     const addableN =
         state.offers.filter((g) => addableCards(g).length > 0).length;
     const addedN =
         buildAddedIndex(state.cards, state.redeemed.byToken).length;
     const mk = (key, label, n) => {
-      const tab = el('div',
-        {class: state.offersSub === key ? 'tab on' : 'tab'}, label);
-      tab.append(el('span', {class: 'n', text: ` ${n}`}));
-      tab.onclick = () => {
+      const pill = el('div',
+        {class: state.offersSub === key ? 'subpill on' : 'subpill',
+          text: `${label} ${n}`});
+      pill.onclick = () => {
         if (state.offersSub === key) return;
         state.offersSub = key;
         render();
       };
-      return tab;
+      return pill;
     };
-    const row = el('div', {class: 'tabs'});
-    row.append(mk('addable', t('subAddable'), addableN));
-    row.append(mk('added', t('subAdded'), addedN));
-    row.append(el('div', {style: 'flex:1'}));
-    if (state.offersSub === 'added') {
-      row.append(el('div', {class: 'sortmini',
-        text: `${t('sortShortExpiry')} ▾`}));
-    }
-    return row;
+    return el('div', {class: 'subbar'},
+      el('div', {class: 'subpills'},
+        mk('addable', t('subAddable'), addableN),
+        mk('added', t('subAdded'), addedN)),
+      el('div', {class: 'sp'}),
+      el('div', {class: 'sortsel', text: `${t('sortShortExpiry')} ▾`}));
   }
 
   /**
@@ -3119,8 +3334,8 @@
     body.append(counters([
       {n: fmtMoney(s.redeemedAmount), l: t('statRedeemed'), c: 'g'},
       {n: s.pending, l: t('statPending'), c: 'navy'},
-      {n: s.expiring, l: t('statExpiring'), c: 'r'}]));
-    body.append(el('div', {id: 'addedlist'}));
+      {n: s.expiring, l: t('statExpiring'), c: 'r'}], 'money'));
+    body.append(el('div', {class: 'addedlist', id: 'addedlist'}));
     renderAddedRows(body);
   }
 
@@ -3387,18 +3602,13 @@
     const pr = state.benefitsRun || {done: 0, total: 0};
     const known = pr.total > 0;
     const pct = known ? Math.round(pr.done / pr.total * 100) : 8;
-    const body = el('div', {class: 'body', style: 'padding:20px 18px'});
-    const rowStyle = 'display:flex;justify-content:space-between;' +
-        'align-items:baseline;margin-bottom:8px';
-    body.append(el('div', {style: rowStyle},
-      el('div', {style: 'font-size:13px;font-weight:700',
-        text: t('loadingBenefits')}),
-      el('div', {class: 'note',
-        text: known ? t('loadingCardN', {done: pr.done, total: pr.total}) :
-          t('loadingCardList')})));
-    body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
-      el('div', {style: `width:${pct}%`})));
-    body.append(el('div', {class: 'note', text: t('benefitsReadOnly')}));
+    const body = el('div', {class: 'body'});
+    body.append(loadingBlock(t('loadingBenefits'),
+      known ? t('loadingCardN', {done: pr.done, total: pr.total}) :
+        t('loadingCardList'), pct, t('benefitsReadOnly')));
+    const sk = el('div', {class: 'skwrap'});
+    for (let i = 0; i < 3; i++) sk.append(skeletonRow());
+    body.append(sk);
     shell.append(body);
   }
 
@@ -3444,19 +3654,6 @@
 
     body.append(renderBenefitStats());
 
-    const tb = el('div', {class: 'btb'});
-    tb.append(el('div', {class: 'sortlbl'}, t('sortByExpiry'),
-      el('span', {class: 'caret', text: '▾'})));
-    tb.append(el('div', {class: 'sp'}));
-    const un = el('input', {type: 'checkbox'});
-    un.checked = state.benefitUnusedOnly;
-    un.onchange = () => {
-      state.benefitUnusedOnly = un.checked;
-      renderBenefitBody(body);
-    };
-    tb.append(el('label', {class: 'unused'}, un, t('unusedOnly')));
-    body.append(tb);
-
     body.append(el('div', {id: 'bbody'}));
     shell.append(body);
     renderBenefitBody(body);
@@ -3500,26 +3697,24 @@
   function renderBenefitStats() {
     const s = state.benefitStats ||
         {thisMonthUnused: 0, redeemedYtd: 0, annualFee: 0, paybackPct: 0};
-    const col = (cls, value, valCls, label, sub) => {
-      const c = el('div', {class: `bcol ${cls}`});
+    const tile = (valCls, value, label, sub) => {
+      const c = el('div', {class: 'c'});
       c.append(el('div', {class: `bval ${valCls}`, text: value}));
       c.append(el('div', {class: 'blbl', text: label}));
       if (sub) c.append(el('div', {class: 'bsub2', text: sub}));
       return c;
     };
-    const feeCol = s.annualFee > 0 ?
-      col('r', `${s.paybackPct}%`, 'ink',
-        t('feeOffset', {spent: fmtMoney(s.redeemedYtd),
-          fee: fmtMoney(s.annualFee)}),
-        t('trackedOnly')) :
-      col('r', fmtMoney(s.redeemedYtd), 'ink', t('redeemedYtd'),
-        t('trackedOnly2'));
-    return el('div', {class: 'bstats'},
-      col('l', fmtMoney(s.thisMonthUnused), 'navy', t('leftThisMonth')),
-      el('div', {class: 'vsep'}),
-      col('m', fmtMoney(s.redeemedYtd), 'green', t('redeemedYtd')),
-      el('div', {class: 'vsep'}),
-      feeCol);
+    // Three tiles: what's unused this month, the year-to-date redeemed total
+    // (the headline "how much did I get back this year"), and annual-fee
+    // payback. No-fee cards drop the third and fall back to two tiles.
+    const tiles = el('div', {class: 'bstats'},
+      tile('navy', fmtMoney(s.thisMonthUnused), t('leftThisMonth')),
+      tile('green', fmtMoney(s.redeemedYtd), t('redeemedYtd')));
+    if (s.annualFee > 0) {
+      tiles.append(tile('ink', `${s.paybackPct}%`, t('feePayback'),
+        t('trackedOnly')));
+    }
+    return tiles;
   }
 
   /**
@@ -3556,20 +3751,27 @@
       text: benefitInitials(group.name)});
     const title = el('div', {class: 'btitle'},
       el('span', {class: 'bname', text: group.name}));
+    // Period / multi-card tags always sit on their own line below the name, so
+    // they land in a consistent place no matter how long the name is (long
+    // names would otherwise push them onto a second line inconsistently).
+    const tags = el('div', {class: 'btags'});
     if (group.period) {
-      title.append(el('span', {class: 'bp', text: periodText(group.period)}));
+      tags.append(el('span', {class: 'bp', text: periodText(group.period)}));
     }
     if (group.multiCard) {
-      title.append(el('span', {class: 'bx',
+      tags.append(el('span', {class: 'bx',
         text: t('xCards', {n: group.entries.length})}));
     }
-    const cardText = group.entries
-      .map((e) => `${e.family} …${e.digits}`).join(' · ');
-    const mn = el('div', {class: 'bmn'}, title,
-      el('div', {class: 'bcard', text: cardText}));
+    const hasTags = tags.children.length > 0;
 
-    // Not-yet-activated benefit (e.g. CLEAR Plus): no progress, a "去激活" CTA.
+    // Not-yet-activated benefit (e.g. CLEAR Plus): single flat row + 去激活 CTA,
+    // with the card name as a subtitle (no per-card breakdown).
     if (isInactiveBenefit(group)) {
+      const cardText = group.entries
+        .map((e) => `${e.family} …${e.digits}`).join(' · ');
+      const mn = el('div', {class: 'bmn'}, title);
+      if (hasTags) mn.append(tags);
+      mn.append(el('div', {class: 'bcard', text: cardText}));
       const rt = el('div', {class: 'brt'},
         el('div', {class: 'binact', text: t('notActivated')}),
         el('div', {class: 'bwhen',
@@ -3579,14 +3781,12 @@
         onclick: () => window.open(
           'https://global.americanexpress.com/card-benefits/view-all',
           '_blank')});
-      return el('div', {class: 'brow'}, logo, mn, rt, btn);
+      return el('div', {class: 'bgrp'},
+        el('div', {class: 'brow flat'}, logo, mn, rt, btn));
     }
 
-    // Inline aggregate progress bar on every credit row (single and multi).
-    const pct = group.target > 0 ?
-      Math.min(100, Math.round(group.spent / group.target * 100)) : 0;
-    mn.append(el('div', {class: 'bbar'}, el('div', {style: `width:${pct}%`})));
-
+    const mn = el('div', {class: 'bmn'}, title);
+    if (hasTags) mn.append(tags);
     const urgent = Number.isFinite(group.daysLeft) && group.daysLeft <= 7;
     const rt = el('div', {class: 'brt'},
       el('div', {class: 'bamt'},
@@ -3596,17 +3796,21 @@
       el('div', {class: urgent ? 'bdays urgent' : 'bdays',
         text: daysLabel(group.daysLeft)}));
 
-    // Every credit row is expandable (consistency) — reveals the per-card
-    // breakdown with card-art thumbnails.
+    // Every credit benefit (single- or multi-card) is collapsible: the per-card
+    // breakdown is hidden by default — a benefit spanning many cards (e.g. a
+    // dozen business cards) would make an always-open list enormous — and the
+    // whole row toggles it open.
     const expanded = state.benefitsExpanded.has(group.key);
-    const row = el('div', {class: 'brow'}, logo, mn, rt,
+    const row = el('div',
+      {class: expanded ? 'brow' : 'brow flat', style: 'cursor:pointer'},
+      logo, mn, rt,
       el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
-    const wrap = el('div', {class: expanded ? 'bgrp exp' : 'bgrp'});
     row.onclick = () => {
       if (expanded) state.benefitsExpanded.delete(group.key);
       else state.benefitsExpanded.add(group.key);
       render();
     };
+    const wrap = el('div', {class: 'bgrp'});
     wrap.append(row);
     if (expanded) wrap.append(renderBenefitBreakdown(group));
     return wrap;
@@ -3643,19 +3847,37 @@
     // Before the account list returns the total is unknown; show a small sliver
     // so the bar reads as "working" rather than empty.
     const pct = known ? Math.round(pr.done / pr.total * 100) : 8;
-    const body = el('div', {class: 'body', style: 'padding:20px 18px'});
-    const rowStyle = 'display:flex;justify-content:space-between;' +
-        'align-items:baseline;margin-bottom:8px';
-    body.append(el('div', {style: rowStyle},
-      el('div', {style: 'font-size:13px;font-weight:700',
-        text: t('loadingOffers')}),
-      el('div', {class: 'note',
-        text: known ? t('loadingCardN', {done: pr.done, total: pr.total}) :
-          t('loadingCardList')})));
-    body.append(el('div', {class: 'bar', style: 'margin-bottom:6px'},
-      el('div', {style: `width:${pct}%`})));
-    body.append(el('div', {class: 'note', text: t('loadingReadOnly')}));
+    const body = el('div', {class: 'body'});
+    body.append(loadingBlock(t('loadingOffers'),
+      known ? t('loadingCardN', {done: pr.done, total: pr.total}) :
+        t('loadingCardList'), pct, t('loadingReadOnly')));
+    const sk = el('div', {class: 'skwrap'});
+    for (let i = 0; i < 3; i++) sk.append(skeletonRow());
+    body.append(sk);
     shell.append(body);
+  }
+
+  /**
+   * Shared "reading…" progress block: a bold title + count on one line, a
+   * progress bar, and a read-only reassurance note.
+   * @param {string} title Heading. @param {string} count Right-aligned count.
+   * @param {number} pct Progress percent. @param {string} note Footnote.
+   * @return {!Element} The block.
+   */
+  function loadingBlock(title, count, pct, note) {
+    const rowStyle = 'display:flex;justify-content:space-between;' +
+        'align-items:baseline;padding:0 0 9px';
+    const countStyle = 'font-size:11.5px;color:#8A8F99;' +
+        'font-variant-numeric:tabular-nums';
+    const head = el('div', {style: 'padding:18px 20px 0'});
+    head.append(el('div', {style: rowStyle},
+      el('div', {style: 'font-size:13px;font-weight:700;color:#1A1E28',
+        text: title}),
+      el('div', {style: countStyle, text: count})));
+    head.append(el('div', {class: 'bar'}, el('div', {style: `width:${pct}%`})));
+    head.append(el('div', {class: 'note', style: 'margin-top:8px',
+      text: note}));
+    return head;
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -3667,21 +3889,21 @@
     const fail = seen - ok - skipped;
     const pending = run.total - seen;
     const pct = run.total ? Math.round(seen / run.total * 100) : 0;
-    shell.append(renderHeader({glyph: el('span', {class: 'spin'}),
+    shell.append(renderHeader({glyph: '＋',
       title: t('runningTitle'),
       subtitle: t('runningSubtitle', {n: run.total}),
       right: el('div', {class: 'b', style: 'font-size:12px;font-weight:700',
         text: t('processedOf',
           {done: run.results.length, total: run.total})})}));
     const body = el('div', {class: 'body'});
-    body.append(el('div', {style: 'padding:16px 18px 0'},
+    body.append(el('div', {style: 'padding:16px 20px 0'},
       el('div', {class: 'bar'}, el('div', {style: `width:${pct}%`}))));
     const cols = [
       {n: ok, l: t('submitOk'), c: 'g'}, {n: fail, l: t('submitFail'), c: 'r'},
       {n: pending, l: t('submitting'), c: 'b'}];
     if (skipped) cols.push({n: skipped, l: t('notSubmitted'), c: 'am'});
     body.append(counters(cols));
-    const rl = el('div', {style: 'padding:4px 18px 8px'});
+    const rl = el('div', {class: 'rl'});
     const settledIds = new Set(run.results.map((r) => `${r.key}|${r.token}`));
     for (const task of run.tasks) {
       const done = run.results.find(
@@ -3710,9 +3932,10 @@
         el('div', {class: stCls, text: stTxt})));
     }
     body.append(rl);
-    const footStyle = 'border-top:1px solid #E7E8EA;padding:11px 18px';
-    body.append(el('div', {style: footStyle},
-      el('div', {class: 'note', text: t('runningNote')})));
+    body.append(el('div', {class: 'bfoot'},
+      el('div', {class: 'note'},
+        el('b', {class: 'am', style: 'font-weight:700',
+          text: t('runningNoteLead')}), t('runningNote'))));
     shell.append(body);
     void settledIds;
   }
@@ -3723,10 +3946,9 @@
     const n = (s) => results.filter((r) => r.state === s).length;
     const throttled = results.some(
       (r) => r.blocked || r.state === ResultState.SKIPPED);
-    shell.append(renderHeader({glyph: throttled ? '!' : '✓',
+    shell.append(renderHeader({glyph: '＋',
       title: throttled ? t('resultTitleStopped') : t('resultTitleOk'),
-      subtitle: t('resultSubtitle', {n: results.length}), close: true,
-      err: throttled}));
+      subtitle: t('resultSubtitle', {n: results.length}), close: true}));
     const body = el('div', {class: 'body'});
     const cols = [
       {n: n(ResultState.VERIFIED), l: t('confirmedAdded'), c: 'g'},
@@ -3736,7 +3958,7 @@
     if (n(ResultState.SKIPPED)) {
       cols.push({n: n(ResultState.SKIPPED), l: t('notSubmitted'), c: 'am'});
     }
-    body.append(counters(cols));
+    body.append(counters(cols, 'lg'));
     if (throttled) {
       body.append(el('div', {class: 'info'},
         el('b', {text: t('throttledTitle')}), t('throttledBody')));
@@ -3744,26 +3966,25 @@
     body.append(el('div', {class: 'info'},
       el('b', {text: t('dedupeHelpTitle')}), t('dedupeHelpBody')));
 
+    // All outcome sections live in one white card, matching the design.
+    const reslist = el('div', {class: 'reslist'});
     const section = (title, filter, glyph, cls) => {
       const items = results.filter(filter);
       if (!items.length) return;
-      body.append(el('div', {style: 'padding:0 18px'},
-        el('div', {class: 'sh', text: title})));
-      const wrap = el('div', {style: 'padding:0 18px 4px'});
+      reslist.append(el('div', {class: 'sh', text: title}));
       for (const r of items) {
         const label = `${r.name} → ${cardLabel(r.token)}`;
         if (r.state === ResultState.FAILED && r.message) {
           // Long server message: stack it under the card, left-aligned.
-          wrap.append(el('div', {class: 'si col'},
+          reslist.append(el('div', {class: 'si col'},
             el('span', {text: label}),
             el('span', {class: `${cls} si-msg`, text: `“${r.message}”`})));
         } else {
-          wrap.append(el('div', {class: 'si'},
+          reslist.append(el('div', {class: 'si'},
             el('span', {text: label}),
-            el('span', {class: cls, text: glyph})));
+            el('span', {class: `st ${cls}`, text: glyph})));
         }
       }
-      body.append(wrap);
     };
     section(t('confirmedAdded'),
       (r) => r.state === ResultState.VERIFIED, '✓', 'g');
@@ -3774,6 +3995,7 @@
       (r) => r.state === ResultState.GHOST, '⚠', 'am');
     section(t('secUnverified'),
       (r) => r.state === ResultState.UNVERIFIED, '?', 'note');
+    if (reslist.children.length) body.append(reslist);
 
     const retryable = (r) => (r.state === ResultState.FAILED ||
         r.state === ResultState.SKIPPED) && !r.gone;
@@ -3784,8 +4006,6 @@
     }
     shell.append(body);
     shell.append(el('div', {class: 'ft'},
-      el('div', {class: 'lnk', text: t('exportCsv'),
-        onclick: () => exportCsv()}),
       el('div', {class: 'sp', style: 'flex:1'}), retry,
       el('button', {class: 'go', text: t('backToList'),
         onclick: () => backToList()})));
@@ -3795,10 +4015,9 @@
    * @param {!Array<{n: number, l: string, c: string}>} cols Counter columns.
    * @return {!Element} The 3-up counter strip.
    */
-  function counters(cols) {
-    const row = el('div', {class: 'cnt'});
-    cols.forEach((col, i) => {
-      if (i) row.append(el('div', {class: 'sep'}));
+  function counters(cols, variant) {
+    const row = el('div', {class: variant ? `cnt ${variant}` : 'cnt'});
+    cols.forEach((col) => {
       row.append(el('div', {class: 'c'},
         el('div', {class: `n ${col.c}`, text: String(col.n)}),
         el('div', {class: 'l', text: col.l})));
@@ -3823,7 +4042,7 @@
     const wrap = el('div', {class: 'cfwrap'});
     const dim = el('div', {class: 'cfdim'});
     dim.append(renderHeader({glyph: '＋', title: t('panelTitle')}));
-    const sk = el('div', {class: 'cfsk'});
+    const sk = el('div', {class: 'skwrap'});
     for (let i = 0; i < 4; i++) sk.append(skeletonRow());
     dim.append(sk);
     wrap.append(dim);
@@ -3841,6 +4060,11 @@
     dlg.append(list);
     dlg.append(el('div', {class: 'cf-meta',
       text: t('confirmMeta', {offers: byOffer.size, adds: tasks.length})}));
+    // Only surfaced past the batch-size threshold, matching the design.
+    if (tasks.length > 30) {
+      dlg.append(el('div', {class: 'cf-warn'},
+        el('span', {text: '⚠ '}), t('confirmThrottle')));
+    }
     dlg.append(el('div', {class: 'cf-btns'},
       el('div', {class: 'cf-cancel', text: t('cancel'),
         onclick: () => cancelConfirm()}),
@@ -3854,11 +4078,15 @@
   function renderEmptyView(shell) {
     shell.append(renderHeader({glyph: '＋', title: t('panelTitle'),
       close: true, lang: true, refresh: true, tabs: true}));
+    const reload = el('div', {class: 'btn', onclick: () => refresh()});
+    const ic = el('span', {style: 'display:flex'});
+    ic.innerHTML = REFRESH_SVG;
+    reload.append(ic, t('reload'));
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
       el('div', {class: 'cir ok', text: '✓'}),
       el('div', {class: 'h', text: t('emptyTitle')}),
       el('div', {class: 'txt', text: t('emptyBody')}),
-      el('div', {class: 'btn', onclick: () => refresh()}, t('reload')))));
+      reload)));
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -3873,39 +4101,51 @@
       el('div', {class: 'btn pri', onclick: () => refresh()}, t('retry')))));
   }
 
-  /** @param {!Element} shell Panel content root (first-run language pick). */
+  /**
+   * First-run trust screen: explains what the tool does and that it's
+   * local-only, with a language toggle. Nothing is read until 开始读取 / Start.
+   * @param {!Element} shell Panel content root.
+   */
   function renderLanguageView(shell) {
-    // Deliberately bilingual: no language has been chosen yet, so both must
-    // be readable. The detected language is pre-highlighted as the default.
-    const detected = detectLanguage();
     shell.append(renderHeader(
-      {glyph: '＋', title: 'Amex 助手 · Amex Assistant', close: true}));
-    const pick = (lang, label) => el('div', {
-      class: detected === lang ? 'btn pri' : 'btn',
+      {glyph: '＋', title: t('panelTitle'), close: true}));
+    const body = el('div', {class: 'body'});
+    const trust = el('div', {class: 'trust'});
+
+    const title = el('div', {class: 'trust-t'});
+    title.append(document.createTextNode(t('trustTitle1')), el('br'),
+      document.createTextNode(t('trustTitle2')));
+    trust.append(title);
+    trust.append(el('div', {class: 'trust-d', text: t('trustDesc')}));
+
+    const bullet = (lead, rest) => el('div', {class: 'trust-b'},
+      el('div', {class: 'ck', text: '✓'}),
+      el('div', {}, el('b', {text: lead}), rest));
+    trust.append(el('div', {class: 'trust-list'},
+      bullet(t('trustB1Lead'), t('trustB1Rest')),
+      bullet(t('trustB2Lead'), t('trustB2Rest')),
+      bullet(t('trustB3Lead'), t('trustB3Rest'))));
+
+    trust.append(el('div', {class: 'go', text: t('trustStart'),
+      onclick: () => chooseLanguage(getLanguage())}));
+    trust.append(el('div', {class: 'trust-foot', text: t('trustFoot')}));
+
+    // Non-persisting language toggle; the choice is saved on 开始读取 / Start.
+    const langBtn = (lang, label) => el('div', {
+      class: getLanguage() === lang ? 'trust-lang on' : 'trust-lang',
       text: label,
-      style: 'min-width:112px;justify-content:center',
-      onclick: () => chooseLanguage(lang),
-    });
-    shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
-      el('div', {class: 'cir ok', text: '文',
-        style: 'font-size:16px;font-weight:700'}),
-      el('div', {class: 'h', text: '选择语言 · Choose your language'}),
-      el('div', {class: 'txt',
-        text: '之后可以在面板右上角随时切换 · ' +
-          'You can switch anytime from the panel header.'}),
-      el('div', {style: 'display:flex;gap:10px;justify-content:center'},
-        pick('zh', '中文'), pick('en', 'English')))));
+      onclick: () => {
+        setLanguage(lang);
+        render();
+      }});
+    trust.append(el('div', {class: 'trust-langs'},
+      langBtn('zh', '中文'), langBtn('en', 'English')));
+
+    body.append(trust);
+    shell.append(body);
   }
 
   // ---- helpers for card family / raw account -------------------------------
-
-  /**
-   * @param {!CardSnapshot} card Card. @return {string} Product family (short).
-   */
-  function familyOf(card) {
-    return (card.shortName || '').replace(/\s*···.*$/, '') ||
-        `…${String(card.token).slice(-4)}`;
-  }
 
   /**
    * cardDisplayDigits works on a raw account; snapshot only kept `shortName`,
@@ -4087,23 +4327,6 @@
     else render(); // nothing left to resend; show the settled states
   }
 
-  /** Downloads the last run's results as a CSV file. */
-  function exportCsv() {
-    const rows = [['offer', 'card', 'state', 'http_status', 'message']];
-    for (const r of state.lastResults.values()) {
-      rows.push([r.name, cardLabel(r.token), r.state, r.httpStatus || '',
-        r.message || '']);
-    }
-    const csv = rows.map((row) => row
-      .map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','),
-    ).join('\n');
-    const url = URL.createObjectURL(
-      new Blob([csv], {type: 'text/csv;charset=utf-8'}));
-    const link = el('a', {href: url, download: 'amex-assistant-results.csv'});
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   /** Returns from the result view to the offer list. */
   function backToList() {
     state.view = 'list';
@@ -4204,6 +4427,64 @@
     requestAnimationFrame(() => p.classList.add('closing'));
   }
 
+  /** @return {string} Which launcher appearance the current state calls for. */
+  function launcherState() {
+    if (state.run && state.view === 'running') return 'running';
+    if (state.view === 'result' && state.lastResults.size) {
+      const results = [...state.lastResults.values()];
+      return results.every((r) => r.state === ResultState.VERIFIED) ?
+        'allok' : 'done';
+    }
+    return 'default';
+  }
+
+  /**
+   * Rebuilds the collapsed launcher pill to reflect a background run: a spinner
+   * with X/Y while submitting; a ✓ with the confirmed · failed · other tally
+   * once done (click it to open the report); otherwise the plain brand pill,
+   * with a small green dot when everything landed cleanly.
+   */
+  function renderLauncherContent() {
+    if (!launcherButton) return;
+    const pill = launcherButton.shadowRoot.querySelector('.l');
+    if (!pill) return;
+    pill.classList.remove('prog');
+    pill.textContent = '';
+    const brand = () => {
+      const i = el('div', {class: 'i'});
+      i.innerHTML = BRAND_ICON_SM;
+      return i;
+    };
+    const st = launcherState();
+    if (st === 'running') {
+      pill.classList.add('prog');
+      pill.append(el('div', {class: 'lspin'}),
+        el('div', {},
+          el('div', {class: 't', text: t('launcherRunning')}),
+          el('div', {class: 'lsub blue',
+            text: `${state.run.results.length} / ${state.run.total}`})));
+    } else if (st === 'done') {
+      pill.classList.add('prog');
+      const results = [...state.lastResults.values()];
+      const c = (s) => results.filter((r) => r.state === s).length;
+      const other = c(ResultState.GHOST) + c(ResultState.UNVERIFIED) +
+          c(ResultState.SKIPPED);
+      pill.append(el('div', {class: 'lok', text: '✓'}),
+        el('div', {},
+          el('div', {class: 't', text: t('launcherDone')}),
+          el('div', {class: 'lsub'},
+            el('span', {class: 'g', text: String(c(ResultState.VERIFIED))}),
+            el('span', {class: 'sep', text: ' · '}),
+            el('span', {class: 'r', text: String(c(ResultState.FAILED))}),
+            el('span', {class: 'sep', text: ' · '}),
+            el('span', {class: 'am', text: String(other)}))));
+    } else {
+      pill.append(brand(),
+        el('div', {}, el('div', {class: 't', text: t('launcherTitle')})));
+      if (st === 'allok') pill.append(el('span', {class: 'ldot'}));
+    }
+  }
+
   /**
    * Fades the launcher pill in or out.
    * @param {boolean} show Fade in (true) or out then hide (false).
@@ -4213,6 +4494,7 @@
     const pill = launcherButton.shadowRoot.querySelector('.l');
     if (!pill) return;
     if (show) {
+      renderLauncherContent();
       launcherButton.style.display = '';
       pill.classList.add('closed');
       void pill.offsetWidth;
@@ -4316,30 +4598,45 @@
       'position:fixed;top:96px;right:0;z-index:2147483647'});
     const root = host.attachShadow({mode: 'open'});
     root.append(el('style', {text: `
-      .l { display:flex; align-items:center; gap:9px; background:#fff;
-        border:1px solid #E3E5E8; border-right:none;
-        border-radius:6px 0 0 6px; padding:10px 16px 10px 12px;
-        box-shadow:0 3px 12px rgba(0,23,90,.14); cursor:pointer;
-        font:12.5px 'Helvetica Neue',Helvetica,system-ui,sans-serif;
+      .l { position:relative; display:flex; align-items:center; gap:9px;
+        background:#fff; border:1px solid #E9EAEE; border-right:none;
+        border-radius:12px 0 0 12px; corner-shape:superellipse(1.6);
+        padding:11px 18px 11px 13px;
+        box-shadow:0 8px 24px -8px rgba(0,23,90,.25); cursor:pointer;
+        font:13px 'Public Sans','Helvetica Neue',Helvetica,system-ui,sans-serif;
         user-select:none;
         transition:box-shadow .15s ease, opacity .14s ease, transform .14s ease }
-      .l:hover { box-shadow:0 5px 18px rgba(0,23,90,.22) }
+      .l:hover { box-shadow:0 10px 28px -8px rgba(0,23,90,.32) }
       .l.closed { opacity:0; transform:scale(.85) translateX(10px);
         pointer-events:none }
       /* Once dragged off the edge it becomes a normal free-floating pill. */
-      .l.float { border-right:1px solid #E3E5E8; border-radius:6px }
-      .i { width:24px; height:24px }
-      .t { font-weight:800; color:#00175A; letter-spacing:.1px }
+      .l.float { border-right:1px solid #E9EAEE; border-radius:12px;
+        corner-shape:superellipse(1.6) }
+      .i { width:24px; height:24px; flex-shrink:0 }
+      .t { font-weight:800; color:#0B1F4E; letter-spacing:-.1px;
+        line-height:1.1; font-size:13px }
+      /* Running / done states run a two-line block, so shrink the title a touch. */
+      .l.prog .t { font-size:12px }
+      .lspin { width:18px; height:18px; border-radius:50%;
+        border:2.5px solid #D9E8F8; border-top-color:#006FCF;
+        animation:lspin .9s linear infinite; flex-shrink:0 }
+      @keyframes lspin { to { transform:rotate(360deg) } }
+      .lok { width:18px; height:18px; border-radius:50%; background:#EAF3EC;
+        color:#0B7A3E; font-size:11px; font-weight:800; display:flex;
+        align-items:center; justify-content:center; flex-shrink:0 }
+      .lsub { font-size:10px; font-weight:700; margin-top:2px; line-height:1;
+        font-variant-numeric:tabular-nums }
+      .lsub.blue { color:#006FCF }
+      .lsub .g { color:#0B7A3E } .lsub .r { color:#C8102E }
+      .lsub .am { color:#9A6A00 } .lsub .sep { color:#C9CCD0 }
+      .ldot { position:absolute; top:7px; right:9px; width:8px; height:8px;
+        border-radius:50%; background:#0B7A3E; box-shadow:0 0 0 2px #fff }
     `}));
-    const iconChip = el('div', {class: 'i'});
-    iconChip.innerHTML = BRAND_ICON;
-    const pill = el('div', {class: 'l'},
-      iconChip,
-      el('div', {},
-        el('div', {class: 't', text: t('launcherTitle')})));
+    const pill = el('div', {class: 'l'});
     root.append(pill);
     document.body.appendChild(host);
     launcherButton = host;
+    renderLauncherContent();
     // Restore a previously dragged spot (it becomes a free-floating pill then).
     const saved = savedPosition('launcher');
     if (saved) {

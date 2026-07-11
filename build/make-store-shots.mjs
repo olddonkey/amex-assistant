@@ -27,8 +27,10 @@ const OUT = join(ROOT, 'docs', 'store');
 
 const BRAND_ICON =
     '<svg width="100%" height="100%" viewBox="0 0 128 128" ' +
-    'style="display:block"><rect width="128" height="128" rx="26" ' +
-    'fill="#006FCF"/><rect x="34" y="26" width="66" height="44" rx="7" ' +
+    'style="display:block"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 ' +
+    '90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 ' +
+    '0 38 0 Z" fill="#006FCF"/><rect x="34" y="26" width="66" height="44" ' +
+    'rx="7" ' +
     'fill="#7FB5E5"/><rect x="22" y="42" width="66" height="44" rx="7" ' +
     'fill="#fff"/><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"/>' +
     '<rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"/>' +
