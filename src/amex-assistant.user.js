@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      1.1.0
+// @version      1.1.1
 // @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
@@ -796,7 +796,8 @@
    * Flattens the member's accounts into one entry per enrollable card,
    * including supplementary / authorized-user cards nested under
    * `supplementary_accounts[].account`. Supplementary cards inherit the parent
-   * card's product for display. Cards without an `account_token` are skipped.
+   * card's product for display — including its art, which Amex omits on
+   * supplementary entries. Cards without an `account_token` are skipped.
    *
    * @param {!Array<!Object>} accounts Raw account objects from the member API.
    * @return {!Array<!Object>} One account-like object per card, each with an
@@ -816,13 +817,21 @@
         const token = supp &&
             (supp.account_token || getPath(supp, 'account.account_token'));
         if (!token) continue;
+        // Amex omits the card art on supplementary entries, so fall back to the
+        // parent card's art — otherwise the supp renders a blank swatch.
+        const ownProduct =
+            supp.product || getPath(supp, 'account.product') || {};
         cards.push({
           ...supp,
           account_token: token,
           relationship: getPath(supp, 'account.relationship') ||
               supp.relationship || 'SUPP',
-          product: supp.product || getPath(supp, 'account.product') ||
-              account.product,
+          product: {
+            ...(account.product || {}),
+            ...ownProduct,
+            small_card_art: getPath(ownProduct, 'small_card_art') ||
+                getPath(account, 'product.small_card_art') || '',
+          },
         });
       }
     }
