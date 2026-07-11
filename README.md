@@ -9,13 +9,10 @@
 
 <br>
 
-[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/cdflnehplopihjenmpdpimigmajdfoon?style=flat&labelColor=00175A&color=006FCF&label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/amex-assistant/cdflnehplopihjenmpdpimigmajdfoon)
-[![Greasy Fork](https://img.shields.io/greasyfork/v/585884?style=flat&labelColor=00175A&color=006FCF&label=Greasy%20Fork)](https://greasyfork.org/en/scripts/585884-amex-assistant)
-[![Installs](https://img.shields.io/greasyfork/dt/585884?style=flat&labelColor=00175A&color=006FCF&label=installs)](https://greasyfork.org/en/scripts/585884-amex-assistant)
-[![Stars](https://img.shields.io/github/stars/olddonkey/amex-assistant?style=flat&labelColor=00175A&color=006FCF)](https://github.com/olddonkey/amex-assistant/stargazers)
-[![License: MIT](https://img.shields.io/badge/license-MIT-006FCF?style=flat&labelColor=00175A)](LICENSE)
-[![Telemetry: none](https://img.shields.io/badge/telemetry-none-006FCF?style=flat&labelColor=00175A)](#privacy)
-[![@grant none](https://img.shields.io/badge/%40grant-none-006FCF?style=flat&labelColor=00175A)](src/amex-assistant.user.js)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/cdflnehplopihjenmpdpimigmajdfoon?style=flat&color=006FCF&label=chrome%20web%20store)](https://chromewebstore.google.com/detail/amex-assistant/cdflnehplopihjenmpdpimigmajdfoon)
+[![Installs](https://img.shields.io/greasyfork/dt/585884?style=flat&color=006FCF&label=installs)](https://greasyfork.org/en/scripts/585884-amex-assistant)
+[![License: MIT](https://img.shields.io/badge/license-MIT-006FCF?style=flat)](LICENSE)
+[![Local-only, no telemetry](https://img.shields.io/badge/local--only-no%20telemetry-2EA043?style=flat)](#privacy)
 
 <br>
 
