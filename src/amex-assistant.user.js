@@ -320,10 +320,17 @@
       statPending: '待消费',
       statExpiring: '7 天内过期',
       redeemedOfCards: '{x} / {y} 卡已返现',
-      redeemedOfOffers: '{x} / {y} offer 已返现',
-      groupByOffer: '按 offer',
+      groupByExpiry: '按到期',
       groupByCard: '按卡',
-      nOffers: '{n} 个 offer',
+      groupByCategory: '按类目',
+      nItems: '{n} 个',
+      uncategorized: '未分类',
+      cardGroupBack: '{amt} 已返现',
+      cardGroupPending: '全部待消费',
+      singleRedeemed: '✓ {amt} 已返现',
+      postedOn: '{date} 入账',
+      expandRest: '展开其余 {n} 个 ▾',
+      collapseRest: '收起 ▴',
       totalRedeemed: '共返 {amt}',
       noCashbackSeen: '未见返现',
       cashbackPosted: '✓ 已返现',
@@ -488,10 +495,17 @@
       statPending: 'To spend',
       statExpiring: 'Expiring in 7 days',
       redeemedOfCards: '{x} / {y} cards posted',
-      redeemedOfOffers: '{x} / {y} offers posted',
-      groupByOffer: 'By offer',
+      groupByExpiry: 'By expiry',
       groupByCard: 'By card',
-      nOffers: '{n} offers',
+      groupByCategory: 'By category',
+      nItems: '{n} offers',
+      uncategorized: 'Uncategorized',
+      cardGroupBack: '{amt} back',
+      cardGroupPending: 'All to spend',
+      singleRedeemed: '✓ {amt} back',
+      postedOn: 'Posted {date}',
+      expandRest: 'Show {n} more ▾',
+      collapseRest: 'Collapse ▴',
       totalRedeemed: '{amt} total back',
       noCashbackSeen: 'No cashback yet',
       cashbackPosted: '✓ Posted',
@@ -573,6 +587,49 @@
   function getPath(obj, path) {
     return path.split('.').reduce(
       (value, key) => (value == null ? value : value[key]), obj);
+  }
+
+  /**
+   * Candidate paths where an offer's category might live. The eligible/added
+   * responses aren't confirmed to carry a category (FINDINGS only nails down
+   * offerId/offerType/terms/longDescription), so this mirrors the v0.20
+   * cashback-amount precedent: probe a list of likely fields and use whichever
+   * exists. When the field name is later confirmed in DevTools this list can be
+   * narrowed. Order is most- to least-specific.
+   * @const {!Array<string>}
+   */
+  const OFFER_CATEGORY_PATHS = [
+    'category', 'offerCategory', 'industry', 'categoryName',
+    'merchantCategory', 'category.name', 'offerCategory.name', 'industry.name',
+    'merchant.category', 'categorization.category', 'taxonomy.category',
+  ];
+
+  /**
+   * Best-effort category for a raw offer. Probes {@link OFFER_CATEGORY_PATHS}
+   * for a non-empty string (or the first entry of a category array/object) and
+   * returns it normalized (trimmed, inner whitespace collapsed), or '' when no
+   * candidate carries one. Pure and export-tested; drives the "按类目" grouping
+   * option (which is hidden entirely when every offer returns '').
+   * @param {?Object} offer Raw offer object.
+   * @return {string} Normalized category, or ''.
+   */
+  function offerCategory(offer) {
+    if (!offer || typeof offer !== 'object') return '';
+    const norm = (v) =>
+      typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
+    for (const path of OFFER_CATEGORY_PATHS) {
+      const hit = norm(getPath(offer, path));
+      if (hit) return hit;
+    }
+    for (const path of ['categories', 'offerCategories']) {
+      const arr = getPath(offer, path);
+      if (Array.isArray(arr) && arr.length) {
+        const first = arr[0];
+        const hit = norm(typeof first === 'string' ? first : first?.name);
+        if (hit) return hit;
+      }
+    }
+    return '';
   }
 
   /**
@@ -1621,6 +1678,7 @@
         g = {key, name: offer.title || offer.name || key,
           description: offer.shortDescription || '',
           image: offer.image || '',
+          category: offerCategory(offer),
           expiry: getPath(offer, 'expiration.text') || '',
           daysLeft: offerExpiryDays(offer, now),
           cards: [], cardIndex: new Map()};
@@ -1631,6 +1689,7 @@
         if (!g.description && offer.shortDescription) {
           g.description = offer.shortDescription;
         }
+        if (!g.category) g.category = offerCategory(offer);
         if (!Number.isFinite(g.daysLeft)) {
           g.daysLeft = offerExpiryDays(offer, now);
         }
@@ -1691,9 +1750,13 @@
    * their account order; within a card, unredeemed offers sort by soonest
    * expiry and redeemed ones sink.
    * @param {!Array<!Object>} offerGroups Groups from {@link buildAddedIndex}.
+   * @param {!Array<string>=} cardOrder Card tokens in the order groups should
+   *     sort (defaults to the current account order). Injected by tests so the
+   *     function stays pure.
    * @return {!Array<!Object>} One group per card.
    */
-  function buildAddedByCard(offerGroups) {
+  function buildAddedByCard(offerGroups,
+    cardOrder = state.cards.map((c) => c.token)) {
     const byToken = new Map();
     for (const g of offerGroups) {
       for (const c of g.cards) {
@@ -1703,7 +1766,8 @@
           byToken.set(c.token, card);
         }
         card.offers.push({key: g.key, name: g.name, image: g.image,
-          daysLeft: g.daysLeft, expiry: g.expiry, redeemed: c.redeemed});
+          description: g.description, daysLeft: g.daysLeft, expiry: g.expiry,
+          redeemed: c.redeemed});
       }
     }
     const groups = [...byToken.values()];
@@ -1722,35 +1786,89 @@
         return order(a) - order(b);
       });
     }
-    // Stable card ordering follows the account order.
-    const rank = new Map(state.cards.map((c, i) => [c.token, i]));
+    // Stable card ordering follows the supplied (account) order.
+    const rank = new Map(cardOrder.map((token, i) => [token, i]));
     return groups.sort((a, b) =>
       (rank.get(a.token) ?? 1e9) - (rank.get(b.token) ?? 1e9));
   }
 
   /**
+   * Re-groups the added-offer index by category, using each group's probed
+   * {@link offerCategory}. Named categories sort alphabetically; the
+   * uncategorized bucket (category '') always sinks last. Pure.
+   * @param {!Array<!Object>} offerGroups Groups from {@link buildAddedIndex}.
+   * @return {!Array<{category: string, offers: !Array<!Object>}>} Sections.
+   */
+  function groupAddedByCategory(offerGroups) {
+    const byCat = new Map();
+    for (const g of offerGroups) {
+      const cat = g.category || '';
+      let sec = byCat.get(cat);
+      if (!sec) {
+        sec = {category: cat, offers: []};
+        byCat.set(cat, sec);
+      }
+      sec.offers.push(g);
+    }
+    return [...byCat.values()].sort((a, b) => {
+      if (!a.category !== !b.category) return a.category ? -1 : 1;
+      return a.category.localeCompare(b.category);
+    });
+  }
+
+  /**
+   * Dispatches the added-offer index into the shape the requested grouping
+   * mode renders from. Pure; the renderer interprets the return by `mode`.
+   * @param {!Array<!Object>} offerGroups Groups from {@link buildAddedIndex}.
+   * @param {string} mode `'expiry'` (flat, already expiry-sorted), `'card'`
+   *     (per-card groups), or `'category'` (per-category sections).
+   * @param {!Array<string>=} cardOrder Card order for `'card'` mode.
+   * @return {!Array<!Object>} Flat groups, card groups, or category sections.
+   */
+  function groupAddedBy(offerGroups, mode, cardOrder) {
+    if (mode === 'card') return buildAddedByCard(offerGroups, cardOrder);
+    if (mode === 'category') return groupAddedByCategory(offerGroups);
+    return offerGroups;
+  }
+
+  /**
    * Header stats for the added view. `redeemedAmount` is dollars only —
    * points postings are tallied separately and never converted to money.
+   * With `cardFilter` set to a token the three tiles narrow to that one card:
+   * only its own postings count, and pending/expiring count only its offers
+   * that haven't posted (the "single-card" reading behind mock state D).
    * @param {!Array<!Object>} groups Added-offer groups.
+   * @param {string=} cardFilter `'all'` (every card) or a card token.
    * @return {{redeemedAmount: number, redeemedPoints: number,
    *           pending: number, expiring: number}} Posted cashback dollars,
-   *     posted points, groups not yet fully redeemed, and how many of those
+   *     posted points, offers not yet redeemed, and how many of those
    *     expire within 7 days.
    */
-  function addedStats(groups) {
+  function addedStats(groups, cardFilter = 'all') {
     let redeemedAmount = 0;
     let redeemedPoints = 0;
     let pending = 0;
     let expiring = 0;
+    const soon = (g) => Number.isFinite(g.daysLeft) && g.daysLeft >= 0 &&
+        g.daysLeft <= 7;
     for (const g of groups) {
-      redeemedAmount += g.totalRedeemedUsd;
-      redeemedPoints += g.totalRedeemedPoints;
-      if (!g.fullyRedeemed) {
-        pending++;
-        if (Number.isFinite(g.daysLeft) && g.daysLeft >= 0 &&
-            g.daysLeft <= 7) {
-          expiring++;
+      if (cardFilter === 'all') {
+        redeemedAmount += g.totalRedeemedUsd;
+        redeemedPoints += g.totalRedeemedPoints;
+        if (!g.fullyRedeemed) {
+          pending++;
+          if (soon(g)) expiring++;
         }
+        continue;
+      }
+      const c = g.cards.find((x) => x.token === cardFilter);
+      if (!c) continue;
+      if (c.redeemed) {
+        if (c.redeemed.unit === 'points') redeemedPoints += c.redeemed.amount;
+        else redeemedAmount += c.redeemed.amount;
+      } else {
+        pending++;
+        if (soon(g)) expiring++;
       }
     }
     return {redeemedAmount: round2(redeemedAmount),
@@ -2049,6 +2167,10 @@
     resolveTasks,
     fetchRedeemedOffers,
     buildAddedIndex,
+    buildAddedByCard,
+    groupAddedBy,
+    groupAddedByCategory,
+    offerCategory,
     addedStats,
     offerExpiryDays,
     fetchAccountBenefits,
@@ -2117,12 +2239,19 @@
     // Offers sub-view: 'addable' (the enroll list) or 'added' (redeem
     // tracking).
     offersSub: 'addable',
-    // How the 'added' redeem-tracking view groups its rows: by 'offer'
-    // (merchant, then its cards) or by 'card' (card, then its offers).
-    addedGroupBy: 'offer',
+    // How the 'added' redeem-tracking view lays out its rows, chosen from the
+    // top-right dropdown: 'expiry' (flat, expiry-ascending — the default),
+    // 'card' (per-card groups), or 'category' (per-category sections; the
+    // dropdown hides this option when no offer carries a category).
+    addedGroupBy: 'expiry',
+    // Single-card filter for the 'added' view (its own chips row). Kept apart
+    // from the addable view's `cardFilter` so the two tabs never cross-taint.
+    addedCardFilter: 'all',
+    // Whether the added view's grouping dropdown menu is open.
+    addedMenuOpen: false,
     // Expanded groups in the 'added' view (collapsed by default so a card /
     // offer with many rows stays a one-line summary). Keys: 'o:<offerKey>' or
-    // 'c:<cardToken>'.
+    // 'card:<cardToken>'.
     addedExpanded: new Set(),
     // Redeemed (savings) records per card token, loaded lazily the first
     // time the added sub-view opens; cleared on refresh.
@@ -2440,7 +2569,7 @@
       color: var(--ink); background: var(--panel); border: 1px solid var(--bd);
       border-radius: 18px; corner-shape: var(--se);
       width: 400px; max-height: 86vh; display: flex;
-      flex-direction: column; overflow: hidden;
+      flex-direction: column; overflow: hidden; position: relative;
       box-shadow: 0 32px 80px -12px rgba(0,23,90,.2), 0 2px 6px rgba(0,23,90,.05);
       transform-origin: top right;
       transition: opacity .18s ease, transform .18s ease;
@@ -2931,6 +3060,7 @@
     .arow { display: flex; gap: 11px; padding: 13px 14px 7px;
       align-items: center; cursor: pointer; }
     .arow.flat { padding: 13px 14px; }
+    .arow.static { cursor: default; }
     .acards { margin: 0 14px 12px 65px; display: flex; flex-direction: column;
       gap: 6px; }
     .acrow { display: flex; align-items: center; gap: 9px; }
@@ -2941,21 +3071,6 @@
       font-variant-numeric: tabular-nums; }
     .acst.urgent { font-weight: 700; color: var(--red);
       font-variant-numeric: tabular-nums; }
-    /* "By card" grouping: the group toggle hugs its pills (not a full-width
-       bar), and the card thumbnail keeps the card's aspect so art isn't cropped
-       into a square. */
-    .agroup { display: flex; padding: 12px 16px 0; }
-    .cardthumb { width: 42px; height: 27px; border-radius: 4px;
-      corner-shape: var(--se); flex: none; overflow: hidden;
-      background: linear-gradient(135deg,#dfe2e6,#b3b9c1); }
-    .cardthumb img { width: 100%; height: 100%; object-fit: cover; }
-    .ologo { width: 22px; height: 22px; border-radius: 6px;
-      corner-shape: var(--se); flex: none; overflow: hidden; display: flex;
-      align-items: center; justify-content: center; font-size: 9px;
-      font-weight: 700; background: #E7F0FA; color: #1B62A8; }
-    .ologo img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
-    .aoname { flex: 1; min-width: 0; font-size: var(--fs-body); color: var(--ink);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .aday { font-size: var(--fs-caption); color: var(--fog);
       font-variant-numeric: tabular-nums; }
     .aday.urgent { font-weight: 700; color: var(--red); }
@@ -2963,6 +3078,80 @@
     .asub { font-size: var(--fs-caption); color: var(--fog); margin-top: 3px;
       font-variant-numeric: tabular-nums; }
     .asub.ok { color: var(--green); font-weight: 600; }
+
+    /* ---- added view: grouping dropdown (the one lightweight dropdown) ---- */
+    .adrop { position: relative; margin-left: auto; }
+    .adrop.open { z-index: 50; }
+    .adropt { display: flex; align-items: center; gap: 5px;
+      font-size: var(--fs-body); color: var(--sub); cursor: pointer;
+      padding: 4px 2px; }
+    .adropt.on { color: var(--navy); font-weight: 700; }
+    .adico { display: flex; flex: none; }
+    .adcar { font-size: 9px; }
+    .adropmenu { position: absolute; top: 26px; right: 0; background: #fff;
+      border: 1px solid var(--bd); border-radius: 10px; corner-shape: var(--se);
+      box-shadow: 0 12px 32px -8px rgba(0,23,90,.25); padding: 5px; width: 122px; }
+    .adropitem { display: flex; align-items: center;
+      justify-content: space-between; padding: 7px 11px; font-size: var(--fs-body);
+      color: var(--sub); border-radius: 7px; corner-shape: var(--se);
+      cursor: pointer; }
+    .adropitem:hover { background: var(--panel); }
+    .adropitem.on { font-weight: 700; color: var(--navy); background: #F0F4FA; }
+    .adropitem .ck { color: var(--amex-blue); }
+    /* Transparent click-catcher; the open .adrop sits above it. */
+    .ddscrim { position: absolute; inset: 0; z-index: 40; }
+
+    /* ---- added view: 按类目 section header (mock state E) ---- */
+    .acat { display: flex; align-items: center; justify-content: space-between;
+      padding: 0 4px; }
+    .acat:not(:first-child) { margin-top: 6px; }
+    .acat .lbl { font-size: var(--fs-sub); font-weight: 600; color: var(--mut);
+      letter-spacing: .2px; }
+    .acat .cnt { font-size: var(--fs-sub); color: var(--fog);
+      font-variant-numeric: tabular-nums; }
+
+    /* ---- added view: 按卡 card group (mock state C) ---- */
+    .acardgrp { background: #fff; border: 1px solid var(--line);
+      border-radius: 14px; corner-shape: var(--se);
+      box-shadow: var(--shadow-card); overflow: hidden; }
+    .acardhd { display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+      border-bottom: 1px solid var(--border-inner); }
+    .acardhd .thumb { width: 32px; height: 21px; border-radius: 4px;
+      corner-shape: var(--se); flex: none; overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+      background: linear-gradient(135deg,#dfe2e6,#b3b9c1); }
+    .acardhd .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .acardhd .nm { flex: 1; min-width: 0; font-size: var(--fs-amount);
+      font-weight: 700; color: var(--ink); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; }
+    .acardhd .nm .dg { font-variant-numeric: tabular-nums; }
+    .acardhd .sum { font-size: var(--fs-sub); color: var(--mut); flex: none;
+      white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .acardhd .sum b { color: var(--green); font-weight: 700; }
+    .acardhd .sum b.mut { color: var(--sub); }
+    .aorow { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      border-bottom: 1px solid var(--border-row); }
+    .aorow:last-child { border-bottom: none; }
+    .aolog { width: 32px; height: 32px; border-radius: 8px;
+      corner-shape: var(--se); flex: none; overflow: hidden; display: flex;
+      align-items: center; justify-content: center; font-size: 9.5px;
+      font-weight: 800; background: #E7F0FA; color: #1B62A8; }
+    .aolog img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+    .aomn { flex: 1; min-width: 0; }
+    .aonm { font-size: var(--fs-amount); font-weight: 700; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .aods { font-size: var(--fs-sub); color: var(--mut); margin-top: 1px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .aort { text-align: right; flex: none; }
+    .aostat { font-size: var(--fs-sub); font-weight: 700; color: var(--red); }
+    .aostat.gray { font-weight: 400; color: var(--mut); }
+    .aostat.ok { color: var(--green); font-variant-numeric: tabular-nums; }
+    .aosub { font-size: var(--fs-caption); color: var(--mut); margin-top: 1px;
+      font-variant-numeric: tabular-nums; }
+    .acardmore { padding: 8px 14px; border-top: 1px solid var(--border-inner);
+      font-size: var(--fs-sub); font-weight: 600; color: var(--amex-blue);
+      cursor: pointer; text-align: center; }
+    .acardmore:hover { background: var(--hover-on-white); }
   `;
 
   /**
@@ -3174,6 +3363,18 @@
       'stroke="currentColor" stroke-width="2.2" style="display:block">' +
       '<rect x="3" y="3" width="12" height="9" rx="2"></rect>' +
       '<rect x="9" y="12" width="12" height="9" rx="2"></rect></svg>';
+
+  /**
+   * A three-line "list" glyph for the added view's grouping dropdown trigger,
+   * inheriting the trigger's text color via `currentColor`.
+   * @const {string}
+   */
+  const GROUP_SVG =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'style="display:block"><line x1="4" y1="7" x2="20" y2="7"></line>' +
+      '<line x1="4" y1="12" x2="20" y2="12"></line>' +
+      '<line x1="4" y1="17" x2="20" y2="17"></line></svg>';
 
   /**
    * The brand icon: a two-card stack with a "+" badge on the Amex blue. Used by
@@ -3388,6 +3589,15 @@
       shell.append(body);
       shell.append(el('div', {class: 'bfoot'},
         el('div', {class: 'note', text: t('addedFootnote')})));
+      // Click-outside scrim for the grouping dropdown: a transparent overlay
+      // clipped to the panel that closes the menu on any click. The open
+      // .adrop lifts above it (z-index), so its trigger/items stay live.
+      if (state.addedMenuOpen) {
+        shell.append(el('div', {class: 'ddscrim', onclick: () => {
+          state.addedMenuOpen = false;
+          render();
+        }}));
+      }
       return;
     }
 
@@ -3455,12 +3665,15 @@
     refreshFooter();
   }
 
-  /** @return {!Element} The 可加 | 已加 segmented pill control. */
+  /**
+   * @return {!Element} The 可加 | 已加 segmented pill control. On the 已加
+   *     sub-view it also carries the grouping dropdown on the right (the one
+   *     lightweight dropdown that replaced the old 按 offer/按卡 segment).
+   */
   function renderOffersSubTabs() {
     const addableN =
         state.offers.filter((g) => addableCards(g).length > 0).length;
-    const addedN =
-        buildAddedIndex(state.cards, state.redeemed.byToken).length;
+    const addedGroups = buildAddedIndex(state.cards, state.redeemed.byToken);
     const mk = (key, label, n) => {
       const pill = el('div',
         {class: state.offersSub === key ? 'subpill on' : 'subpill',
@@ -3468,20 +3681,86 @@
       pill.onclick = () => {
         if (state.offersSub === key) return;
         state.offersSub = key;
+        state.addedMenuOpen = false;
         render();
       };
       return pill;
     };
-    return el('div', {class: 'subbar'},
+    const bar = el('div', {class: 'subbar'},
       el('div', {class: 'subpills'},
         mk('addable', t('subAddable'), addableN),
-        mk('added', t('subAdded'), addedN)));
+        mk('added', t('subAdded'), addedGroups.length)));
+    if (state.offersSub === 'added') {
+      const hasCat = addedGroups.some((g) => g.category);
+      bar.append(renderAddedGroupDropdown(hasCat, effectiveAddedMode(hasCat)));
+    }
+    return bar;
   }
 
   /**
-   * Renders the added (redeem-tracking) sub-view into the list body: stats
-   * strip + always-expanded per-card rows, or a loading / error block while
-   * the savings records aren't available.
+   * The current effective grouping mode, mapping any legacy/invalid value to
+   * `'expiry'` and downgrading `'category'` to `'expiry'` when no offer carries
+   * a category (so the layout never depends on a hidden option).
+   * @param {boolean} hasCat Whether any offer carries a category.
+   * @return {string} `'expiry'`, `'card'`, or `'category'`.
+   */
+  function effectiveAddedMode(hasCat) {
+    const m = state.addedGroupBy;
+    if (m === 'category') return hasCat ? 'category' : 'expiry';
+    if (m === 'card') return 'card';
+    return 'expiry';
+  }
+
+  /**
+   * The one lightweight grouping dropdown at the top-right of the 已加 view.
+   * A real menu: the trigger toggles it open, each option ticks the active
+   * mode, and picking one re-lays the list. Never a dead control — 按类目 only
+   * appears when the data supports it.
+   * @param {boolean} hasCat Whether to offer the 按类目 option.
+   * @param {string} mode The effective active mode.
+   * @return {!Element} The dropdown.
+   */
+  function renderAddedGroupDropdown(hasCat, mode) {
+    const labels = {expiry: t('groupByExpiry'), card: t('groupByCard'),
+      category: t('groupByCategory')};
+    const open = state.addedMenuOpen;
+    const wrap = el('div', {class: open ? 'adrop open' : 'adrop'});
+    const ico = el('span', {class: 'adico'});
+    ico.innerHTML = GROUP_SVG;
+    const trig = el('div', {class: open ? 'adropt on' : 'adropt'});
+    trig.append(ico, document.createTextNode(`${labels[mode]} `),
+      el('span', {class: 'adcar', text: open ? '▴' : '▾'}));
+    trig.onclick = () => {
+      state.addedMenuOpen = !open;
+      render();
+    };
+    wrap.append(trig);
+    if (open) {
+      const menu = el('div', {class: 'adropmenu'});
+      const opt = (key, label) => {
+        const row = el('div',
+          {class: mode === key ? 'adropitem on' : 'adropitem'});
+        row.append(el('span', {text: label}));
+        if (mode === key) row.append(el('span', {class: 'ck', text: '✓'}));
+        row.onclick = () => {
+          state.addedGroupBy = key;
+          state.addedMenuOpen = false;
+          render();
+        };
+        return row;
+      };
+      menu.append(opt('expiry', labels.expiry), opt('card', labels.card));
+      if (hasCat) menu.append(opt('category', labels.category));
+      wrap.append(menu);
+    }
+    return wrap;
+  }
+
+  /**
+   * Renders the added (redeem-tracking) sub-view into the list body. Mirrors
+   * the addable view's skeleton — search → card chips → stats → list — with
+   * grouping moved to the top-right dropdown (rendered by the sub-tab row).
+   * Shows a loading / error block while the savings records aren't available.
    * @param {!Element} body Panel body.
    */
   function renderAddedView(body) {
@@ -3502,32 +3781,66 @@
         el('span', {class: 'note', text: t('addedLoading')}))));
       return;
     }
+    // Search (reuses state.query so a merchant filter carries between the
+    // 可加 and 已加 sub-views); re-draws just the rows to keep input focus.
+    const search = el('input', {type: 'search', value: state.query,
+      placeholder: t('searchOffers')});
+    search.oninput = (e) => {
+      state.query = e.target.value.trim().toLowerCase();
+      renderAddedRows(body);
+    };
+    body.append(el('div', {class: 'sr'}, search));
+
+    // Card filter chips — the added view's own filter (state.addedCardFilter),
+    // no dashed "只看多卡" chip (that one is addable-only).
+    body.append(renderAddedCardChips());
+
     const groups = buildAddedIndex(state.cards, r.byToken);
-    const s = addedStats(groups);
+    const s = addedStats(groups, state.addedCardFilter);
     body.append(counters([
       {n: fmtMoney(s.redeemedAmount), l: t('statRedeemed'), c: 'g'},
       {n: s.pending, l: t('statPending'), c: 'navy'},
       {n: s.expiring, l: t('statExpiring'), c: 'r'}], 'money'));
-    // Toggle: group the tracking rows by offer (merchant) or by card.
-    const mk = (key, label) => {
-      const pill = el('div', {text: label,
-        class: state.addedGroupBy === key ? 'subpill on' : 'subpill'});
-      pill.onclick = () => {
-        if (state.addedGroupBy === key) return;
-        state.addedGroupBy = key;
-        render();
-      };
-      return pill;
-    };
-    body.append(el('div', {class: 'agroup'},
-      el('div', {class: 'subpills'},
-        mk('offer', t('groupByOffer')), mk('card', t('groupByCard')))));
+
     body.append(el('div', {class: 'addedlist', id: 'addedlist'}));
     renderAddedRows(body);
   }
 
   /**
-   * (Re)draws just the added-offer rows (so typing in search keeps focus).
+   * The added view's card-filter chip row: navy "all" pill + one swatch chip
+   * per card, bound to state.addedCardFilter. No condition chips — selecting a
+   * single card narrows the stats and single-cards the row status.
+   * @return {!Element} The chip row.
+   */
+  function renderAddedCardChips() {
+    const row = el('div', {class: 'cfrow'});
+    const add = (key, label, swToken) => {
+      const chip = el('div',
+        {class: state.addedCardFilter === key ? 'cfil on' : 'cfil'});
+      if (swToken != null) {
+        const sw = el('span', {class: 'cfsw'});
+        const cd = cardOf(swToken);
+        if (cd?.art) sw.append(el('img', {src: cd.art, alt: ''}));
+        else sw.style.background = swatchStyle(swToken);
+        chip.append(sw);
+      }
+      chip.append(document.createTextNode(label));
+      chip.onclick = () => {
+        state.addedCardFilter = key;
+        state.addedMenuOpen = false;
+        render();
+      };
+      row.append(chip);
+    };
+    add('all', t('allCards'));
+    for (const card of state.cards) add(card.token, `…${card.digits}`,
+      card.token);
+    return row;
+  }
+
+  /**
+   * (Re)draws just the added-offer rows (so typing in search keeps focus),
+   * dispatching on the effective grouping mode and the single-card filter.
    * @param {!Element} body Panel body (contains #addedlist).
    */
   function renderAddedRows(body) {
@@ -3535,38 +3848,82 @@
     if (!list) return;
     list.textContent = '';
     const q = state.query;
+    const cf = state.addedCardFilter;
+    const single = cf !== 'all';
     const empty = () => list.append(el('div', {class: 'msg',
       style: 'padding:24px'}, el('div', {class: 'note',
       text: q ? t('noMatchingOffers') : t('noAddedOffers')})));
-    const offerGroups = buildAddedIndex(state.cards, state.redeemed.byToken);
 
-    if (state.addedGroupBy === 'card') {
-      let cards = buildAddedByCard(offerGroups);
-      if (q) {
-        cards = cards
-          .map((c) => ({...c,
-            offers: c.offers.filter((o) => o.name.toLowerCase().includes(q))}))
-          .filter((c) => c.offers.length);
+    const all = buildAddedIndex(state.cards, state.redeemed.byToken);
+    const mode = effectiveAddedMode(all.some((g) => g.category));
+    // Apply the merchant search and the single-card filter to the groups.
+    let groups = all.filter((g) =>
+      (!q || g.name.toLowerCase().includes(q)) &&
+      (!single || g.cards.some((c) => c.token === cf)));
+    if (!groups.length) return empty();
+
+    if (mode === 'card') {
+      // A single-card 按卡 view collapses to just that card's group.
+      if (single) {
+        groups = groups.map((g) =>
+          ({...g, cards: g.cards.filter((c) => c.token === cf)}));
       }
-      if (!cards.length) return empty();
-      for (const c of cards) list.append(renderAddedByCardRow(c));
+      for (const cardGroup of groupAddedBy(groups, 'card')) {
+        list.append(renderAddedCardGroup(cardGroup));
+      }
       return;
     }
-
-    const groups = offerGroups
-      .filter((g) => !q || g.name.toLowerCase().includes(q));
-    if (groups.length === 0) return empty();
-    for (const g of groups) list.append(renderAddedRow(g));
+    if (mode === 'category') {
+      for (const sec of groupAddedBy(groups, 'category')) {
+        list.append(renderCategoryHeader(sec));
+        for (const g of sec.offers) list.append(renderAddedRow(g, cf));
+      }
+      return;
+    }
+    for (const g of groups) list.append(renderAddedRow(g, cf));
   }
 
   /**
-   * One added-offer group: merchant row + always-open per-card redemption
-   * lines (a posting shows ✓ + amount + date; otherwise "no cashback seen").
-   * Fully-redeemed groups render dimmed.
+   * A category section header for the 按类目 layout: category name (original,
+   * uppercased) on the left, offer count on the right (mock state E).
+   * @param {{category: string, offers: !Array<!Object>}} sec A category
+   *     section from {@link groupAddedByCategory}.
+   * @return {!Element} The header element.
+   */
+  function renderCategoryHeader(sec) {
+    const label = sec.category ?
+      sec.category.toUpperCase() : t('uncategorized');
+    return el('div', {class: 'acat'},
+      el('span', {class: 'lbl', text: label}),
+      el('span', {class: 'cnt', text: t('nItems', {n: sec.offers.length})}));
+  }
+
+  /**
+   * The "✓ $X 已返现" text for a single-card posting, or a bare "✓ 已返现"
+   * when the posted amount is unknown.
+   * @param {!Object} redeemed A per-card redemption record.
+   * @return {string} The status text.
+   */
+  function singleRedeemedText(redeemed) {
+    if (redeemed.amount > 0) {
+      const money = redeemed.unit === 'points' ?
+        fmtPoints(redeemed.amount) : fmtMoney(redeemed.amount);
+      return t('singleRedeemed', {amt: money});
+    }
+    return t('cashbackPosted');
+  }
+
+  /**
+   * One added-offer group row. With `cf === 'all'` it reads across cards: the
+   * expiry + an x/y "cards posted" ratio, expandable to a per-card breakdown
+   * (mock states A / E). With a card token it single-cards to that card's own
+   * status — 待消费 or ✓ $X 已返现 · M/D 入账 — and is not expandable (mock
+   * state D). Fully-redeemed groups render dimmed in the across-cards reading.
    * @param {!Object} g An added-offer group.
+   * @param {string=} cf `'all'` or a single card token.
    * @return {!Element} The group element.
    */
-  function renderAddedRow(g) {
+  function renderAddedRow(g, cf = 'all') {
     const logo = el('div', {class: 'logo'});
     if (g.image) {
       logo.append(el('img', {src: g.image, alt: '', loading: 'lazy'}));
@@ -3579,6 +3936,31 @@
     const main = el('div', {class: 'mn'},
       el('div', {class: 'nm', text: g.name}),
       g.description ? el('div', {class: 'ds', text: g.description}) : null);
+
+    // Single-card reading: this card's own status, no breakdown to expand.
+    if (cf !== 'all') {
+      const c = g.cards.find((x) => x.token === cf);
+      const rt = el('div', {class: 'rt'});
+      if (c && c.redeemed) {
+        rt.append(el('div',
+          {class: 'aday ok', text: singleRedeemedText(c.redeemed)}));
+        if (c.redeemed.date) {
+          rt.append(el('div',
+            {class: 'asub', text: t('postedOn', {date: c.redeemed.date})}));
+        }
+      } else {
+        if (Number.isFinite(g.daysLeft)) {
+          rt.append(el('div', {class: g.daysLeft <= 7 ? 'aday urgent' : 'aday',
+            text: daysLabel(g.daysLeft)}));
+        } else if (g.expiry) {
+          rt.append(el('div', {class: 'aday', text: expiryLabel(g)}));
+        }
+        rt.append(el('div', {class: 'asub', text: t('statPending')}));
+      }
+      const wrap = el('div', {class: 'agrp'});
+      wrap.append(el('div', {class: 'arow flat static'}, logo, main, rt));
+      return wrap;
+    }
 
     const rt = el('div', {class: 'rt'});
     const ratio = t('redeemedOfCards',
@@ -3649,82 +4031,95 @@
   }
 
   /**
-   * One card group (the "by card" grouping): card row + collapsible per-offer
-   * redemption lines. Mirrors {@link renderAddedRow} with card and offer roles
-   * swapped.
+   * One card group (the 按卡 layout, mock state C): a card header (thumbnail +
+   * family ⋯digits + `N 个 · $X 已返现` / `全部待消费`) over its offer rows.
+   * The first 3 rows show; the rest hide behind an "展开其余 N 个 ▾" link. Each
+   * row single-cards to this card's own status.
    * @param {!Object} cg A by-card group from {@link buildAddedByCard}.
    * @return {!Element} The group element.
    */
-  function renderAddedByCardRow(cg) {
+  function renderAddedCardGroup(cg) {
+    const wrap = el('div', {class: 'acardgrp'});
     const cardData = cardOf(cg.token);
-    // A card-shaped thumbnail (cards aren't square, so a square box would crop
-    // the art).
-    const thumb = el('div', {class: 'cardthumb'});
+    const thumb = el('div', {class: 'thumb'});
     if (cardData?.art) thumb.append(el('img', {src: cardData.art, alt: ''}));
     else thumb.style.background = swatchStyle(cg.token);
-    const name = cardData ? cardData.shortName :
-      `…${String(cg.token).slice(-4)}`;
-    const main = el('div', {class: 'mn'},
-      el('div', {class: 'nm', text: name}),
-      el('div', {class: 'ds', text: t('nOffers', {n: cg.offers.length})}));
-
-    const rt = el('div', {class: 'rt'});
-    const parts = [];
-    if (cg.totalRedeemedUsd > 0) parts.push(fmtMoney(cg.totalRedeemedUsd));
-    if (cg.totalRedeemedPoints > 0) {
-      parts.push(fmtPoints(cg.totalRedeemedPoints));
-    }
-    if (parts.length) {
-      rt.append(el('div', {class: 'aday ok',
-        text: t('totalRedeemed', {amt: parts.join(' + ')})}));
-    }
-    rt.append(el('div', {class: cg.redeemedCount > 0 ? 'asub ok' : 'asub',
-      text: t('redeemedOfOffers',
-        {x: cg.redeemedCount, y: cg.offers.length})}));
-
-    const box = el('div', {class: 'acards'});
-    for (const o of cg.offers) {
-      const olog = el('div', {class: 'ologo'});
-      if (o.image) {
-        olog.append(el('img', {src: o.image, alt: '', loading: 'lazy'}));
-      } else {
-        const [bg, fg] = logoColors(o.name);
-        olog.style.background = bg;
-        olog.style.color = fg;
-        olog.textContent = merchantInitials(o.name);
+    const family = cardData ? cardData.family : '';
+    const digits = cardData ? cardData.digits : String(cg.token).slice(-4);
+    const nm = el('div', {class: 'nm'});
+    if (family) nm.append(document.createTextNode(`${family} `));
+    nm.append(el('span', {class: 'dg', text: `⋯${digits}`}));
+    const sum = el('div', {class: 'sum'});
+    sum.append(document.createTextNode(`${t('nItems', {n: cg.offers.length})} `));
+    if (cg.redeemedCount > 0) {
+      const parts = [];
+      if (cg.totalRedeemedUsd > 0) parts.push(fmtMoney(cg.totalRedeemedUsd));
+      if (cg.totalRedeemedPoints > 0) {
+        parts.push(fmtPoints(cg.totalRedeemedPoints));
       }
-      let status;
-      if (o.redeemed) {
-        let text = t('cashbackPosted');
-        if (o.redeemed.amount > 0) {
-          text += ` ${o.redeemed.unit === 'points' ?
-            fmtPoints(o.redeemed.amount) : fmtMoney(o.redeemed.amount)}`;
-        }
-        if (o.redeemed.date) text += ` · ${o.redeemed.date}`;
-        status = el('span', {class: 'acst ok', text});
-      } else if (Number.isFinite(o.daysLeft)) {
-        status = el('span', {class: o.daysLeft <= 7 ? 'acst urgent' : 'acst',
-          text: daysLabel(o.daysLeft)});
-      } else {
-        status = el('span', {class: 'acst', text: t('noCashbackSeen')});
-      }
-      box.append(el('div', {class: 'acrow'}, olog,
-        el('span', {class: 'aoname', text: o.name}), status));
+      sum.append(document.createTextNode('· '),
+        el('b', {text: t('cardGroupBack', {amt: parts.join(' + ')})}));
+    } else {
+      sum.append(document.createTextNode('· '),
+        el('b', {class: 'mut', text: t('cardGroupPending')}));
     }
-    // Collapsed by default — a card can carry dozens of offers.
-    const expanded = state.addedExpanded.has(`c:${cg.token}`);
-    const row = el('div', {class: expanded ? 'arow' : 'arow flat'},
-      thumb, main, rt,
-      el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
-    row.onclick = () => {
-      if (expanded) state.addedExpanded.delete(`c:${cg.token}`);
-      else state.addedExpanded.add(`c:${cg.token}`);
-      render();
-    };
-    const wrap = el('div', {class: cg.fullyRedeemed ? 'agrp dim' : 'agrp'});
-    wrap.append(row);
-    if (expanded) wrap.append(box);
+    wrap.append(el('div', {class: 'acardhd'}, thumb, nm, sum));
+
+    // First 3 rows show; the rest sit behind an expand link (state.added
+    // Expanded keyed 'card:<token>').
+    const expanded = state.addedExpanded.has(`card:${cg.token}`);
+    const shown = expanded ? cg.offers : cg.offers.slice(0, 3);
+    for (const o of shown) wrap.append(renderCardOfferRow(o));
+    const rest = cg.offers.length - 3;
+    if (rest > 0) {
+      const more = el('div', {class: 'acardmore',
+        text: expanded ? t('collapseRest') : t('expandRest', {n: rest})});
+      more.onclick = () => {
+        if (expanded) state.addedExpanded.delete(`card:${cg.token}`);
+        else state.addedExpanded.add(`card:${cg.token}`);
+        render();
+      };
+      wrap.append(more);
+    }
     return wrap;
+  }
+
+  /**
+   * One offer row inside a 按卡 card group: compact logo + name + short
+   * description, right-aligned single-card status (待消费 with days-left, or
+   * ✓ $X 已返现 · M/D 入账).
+   * @param {!Object} o A per-card offer from {@link buildAddedByCard}.
+   * @return {!Element} The row element.
+   */
+  function renderCardOfferRow(o) {
+    const log = el('div', {class: 'aolog'});
+    if (o.image) {
+      log.append(el('img', {src: o.image, alt: '', loading: 'lazy'}));
+    } else {
+      const [bg, fg] = logoColors(o.name);
+      log.style.background = bg;
+      log.style.color = fg;
+      log.textContent = merchantInitials(o.name);
+    }
+    const mn = el('div', {class: 'aomn'},
+      el('div', {class: 'aonm', text: o.name}),
+      o.description ? el('div', {class: 'aods', text: o.description}) : null);
+    const rt = el('div', {class: 'aort'});
+    if (o.redeemed) {
+      rt.append(el('div',
+        {class: 'aostat ok', text: singleRedeemedText(o.redeemed)}));
+      if (o.redeemed.date) {
+        rt.append(el('div',
+          {class: 'aosub', text: t('postedOn', {date: o.redeemed.date})}));
+      }
+    } else {
+      if (Number.isFinite(o.daysLeft)) {
+        rt.append(el('div', {class: o.daysLeft <= 7 ? 'aostat' : 'aostat gray',
+          text: daysLabel(o.daysLeft)}));
+      }
+      rt.append(el('div', {class: 'aosub', text: t('statPending')}));
+    }
+    return el('div', {class: 'aorow'}, log, mn, rt);
   }
 
   /**
