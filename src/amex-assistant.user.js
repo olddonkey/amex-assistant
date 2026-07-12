@@ -350,6 +350,21 @@
       addedError: '返现记录读取失败。',
       addedFootnote:
           '消费状态按返现入账记录归类，入账通常延迟 1–5 天 · 以 Amex 为准',
+      // Wide mode (G4): the second density (≈880px centered overlay).
+      expandWide: '展开',
+      collapseSidebar: '收窄',
+      colMerchantOffer: '商家 / OFFER',
+      colExpiry: '到期',
+      colCardStatus: '各卡状态',
+      colChooseCards: '加到哪些卡（点 chip 勾选）',
+      colOffer: 'OFFER',
+      colCardResult: '各卡结果',
+      multiAddableOnly: '只看多卡可加',
+      nCards: '{n} 张卡',
+      wideResultSub: '{n} 个添加请求并行发出 · 已重新读取各卡确认',
+      resultLegend: '✗ 失败 = Amex 返回错误 · ? 疑似重复 = Amex 报成功但复读时' +
+          '不在该卡（通常同一 offer 只能加一张卡）',
+      retryFailed: '重试失败项',
       period_month: '月',
       period_quarter: '季',
       period_half: '半年',
@@ -535,6 +550,22 @@
       addedError: 'Could not read cashback records.',
       addedFootnote: 'Spend status comes from posted cashback records, ' +
           'which usually lag 1–5 days · Amex is authoritative',
+      // Wide mode (G4): the second density (≈880px centered overlay).
+      expandWide: 'Expand',
+      collapseSidebar: 'Collapse',
+      colMerchantOffer: 'Merchant / offer',
+      colExpiry: 'Expires',
+      colCardStatus: 'Per-card status',
+      colChooseCards: 'Add to which cards (tap a chip)',
+      colOffer: 'OFFER',
+      colCardResult: 'Per-card result',
+      multiAddableOnly: 'Multi-card eligible only',
+      nCards: '{n} cards',
+      wideResultSub: '{n} add requests sent in parallel · re-read to confirm',
+      resultLegend: '✗ Failed = Amex returned an error · ? Possible ' +
+          'duplicate = reported success but absent on re-read (an offer ' +
+          'usually adds to one card only)',
+      retryFailed: 'Retry failed',
       period_month: 'mo',
       period_quarter: 'qtr',
       period_half: '6 mo',
@@ -2304,6 +2335,28 @@
     return {tasks, landed, gone};
   }
 
+  /**
+   * Groups flat enroll results by their offer group key, preserving first-seen
+   * order. Used by the wide result / running views, which show one row per
+   * offer with each card's outcome as a chip (vs. the sidebar's one-row-per
+   * (offer, card) list). Pure; no I/O.
+   * @param {!Array<!Object>} results Results carrying `key`, `name`, `token`.
+   * @return {!Array<{key: string, name: string, results: !Array<!Object>}>}
+   *     One entry per offer, in first-seen order.
+   */
+  function groupResultsByOffer(results) {
+    const byKey = new Map();
+    for (const r of results) {
+      let g = byKey.get(r.key);
+      if (!g) {
+        g = {key: r.key, name: r.name, results: []};
+        byKey.set(r.key, g);
+      }
+      g.results.push(r);
+    }
+    return [...byKey.values()];
+  }
+
   /** Functions exposed for reuse and unit testing. */
   const api = {
     offerGroupKey,
@@ -2327,6 +2380,7 @@
     executeSelected,
     planRetry,
     resolveTasks,
+    groupResultsByOffer,
     fetchRedeemedOffers,
     buildAddedIndex,
     buildAddedByCard,
@@ -2439,6 +2493,9 @@
     // "无法自动追踪" row at the bottom of the list.
     benefitsUntrackable: [],
     benefitsUntrackableOpen: false,
+    // Wide mode (G4): offer keys whose per-card status chips are expanded past
+    // the "+N" overflow in the wide added table.
+    wideChipsExpanded: new Set(),
   };
 
   /** Panel host + shadow root, created lazily and reused across opens. */
@@ -2569,6 +2626,97 @@
     host.style.left = `${x}px`;
     host.style.top = `${y}px`;
     host.style.right = 'auto';
+  }
+
+  // ---- density (sidebar ↔ wide) --------------------------------------------
+  // The panel has two densities of the SAME skeleton: the 400px sidebar (a
+  // companion pane that hugs the Amex page) and a ≈880px centered overlay for
+  // browsing/managing. The preference persists (like the language/position);
+  // a window too narrow to hold the overlay falls back to the sidebar without
+  // losing the preference, and restores it once the window is wide enough.
+
+  /** localStorage key holding the chosen density preference. */
+  const DENSITY_STORAGE_KEY = 'amexAssistantDensity';
+  /** Below this viewport width the overlay can't fit, so we fall back. */
+  const WIDE_MIN_WIDTH = 940;
+
+  /** The user's density preference: `'sidebar'` (default) or `'wide'`. */
+  let densityPref = 'sidebar';
+  /** The geometry applied to the host, so it isn't reset on every render. */
+  let appliedDensity = null;
+
+  /** Loads the saved density preference and watches the viewport. */
+  function initDensity() {
+    try {
+      const saved = localStorage.getItem(DENSITY_STORAGE_KEY);
+      if (saved === 'wide' || saved === 'sidebar') densityPref = saved;
+    } catch { /* private mode etc.; default sidebar */ }
+    let timer = null;
+    window.addEventListener('resize', () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        const open = panelHost && panelHost.style.display !== 'none';
+        if (open && currentDensity() !== appliedDensity) render();
+      }, 150);
+    });
+  }
+
+  /**
+   * The effective density: the preference, unless the window is too narrow to
+   * fit the overlay (then the sidebar, keeping the preference for later).
+   * @return {string} `'sidebar'` or `'wide'`.
+   */
+  function currentDensity() {
+    return densityPref === 'wide' && window.innerWidth >= WIDE_MIN_WIDTH ?
+      'wide' : 'sidebar';
+  }
+
+  /** Whether the current window is wide enough to offer the overlay at all. */
+  function canGoWide() {
+    return window.innerWidth >= WIDE_MIN_WIDTH;
+  }
+
+  /** Flips the density preference (from the ⤢/收窄 header button). */
+  function toggleDensity() {
+    densityPref = densityPref === 'wide' ? 'sidebar' : 'wide';
+    try {
+      localStorage.setItem(DENSITY_STORAGE_KEY, densityPref);
+    } catch { /* private mode etc.; the choice just won't stick */ }
+    render();
+  }
+
+  /**
+   * Positions the host for the current density. The wide overlay is a fixed,
+   * centered, non-draggable box (its size comes from the CSS); the sidebar
+   * restores its saved/default top-right spot. Only runs when the density
+   * actually changes, so an in-session sidebar drag survives re-renders.
+   * @param {boolean} wide Whether the wide overlay is active.
+   */
+  function applyDensityGeometry(wide) {
+    const key = wide ? 'wide' : 'sidebar';
+    if (appliedDensity === key) return;
+    appliedDensity = key;
+    if (!panelHost) return;
+    const s = panelHost.style;
+    if (wide) {
+      s.top = '50%';
+      s.left = '50%';
+      s.right = 'auto';
+      s.bottom = 'auto';
+      s.transform = 'translate(-50%, -50%)';
+    } else {
+      s.transform = '';
+      const saved = savedPosition('panel');
+      if (saved) {
+        applyPosition(panelHost, saved);
+      } else {
+        s.top = '16px';
+        s.right = '16px';
+        s.left = 'auto';
+        s.bottom = 'auto';
+      }
+    }
   }
 
   /**
@@ -3330,6 +3478,244 @@
       font-size: var(--fs-sub); font-weight: 600; color: var(--amex-blue);
       cursor: pointer; text-align: center; }
     .acardmore:hover { background: var(--hover-on-white); }
+
+    /* ===== Wide mode (G4): the second density, a centered ≈880px overlay =====
+       The SAME skeleton at a denser, table-column layout; the +1~1.5px font
+       scale comes from the [data-density="wide"] variable block near the top.
+       The sidebar never sets that attribute, so every rule below is inert
+       there — the wide code path cannot touch the sidebar. */
+    .p[data-density="wide"] {
+      width: min(880px, calc(100vw - 24px));
+      height: calc(100vh - 56px);
+      max-height: none;
+      transform-origin: center;
+    }
+    /* Wide is a fixed centered overlay; dragging stays a sidebar-only affordance. */
+    .p[data-density="wide"] .hrow { cursor: default; }
+    /* Transient/centered views (confirm, trust, error, empty, loading) keep the
+       sidebar blocks but centered in the shell instead of stretched to 880px. */
+    .p[data-density="wide"] .body { flex: 1; }
+    .p[data-density="wide"] .msg,
+    .p[data-density="wide"] .trust { max-width: 460px; margin: 0 auto; }
+    .p[data-density="wide"] .cfdlg { max-width: 460px; }
+    .p[data-density="wide"] .cfwrap { flex: 1; }
+    .p[data-density="wide"] .ft { padding: 12px 20px; }
+    .p[data-density="wide"] .cfrow { padding: 12px 20px 0; }
+
+    /* Header 收窄 pill (the wide counterpart of the sidebar's ⤢ round button). */
+    .densbtn { display: flex; align-items: center; gap: 6px; flex: none;
+      border: 1px solid var(--border-1); border-radius: 8px;
+      corner-shape: var(--se); padding: 6px 11px; font-size: var(--fs-body);
+      font-weight: 700; color: var(--sub); cursor: pointer; background: #fff;
+      transition: background .15s ease; }
+    .densbtn:hover { background: var(--hover-on-white); }
+
+    /* Pinned top region (pill / search / chips / column header) on the panel bg. */
+    .wtop { flex: none; }
+    .wctlrow { display: flex; align-items: center; gap: 12px;
+      padding: 14px 20px 0; }
+    .wsearch { flex: 1; min-width: 0; display: flex; align-items: center;
+      gap: 8px; background: #fff; border: 1px solid var(--bd2);
+      border-radius: 9px; corner-shape: var(--se); padding: 8px 13px;
+      box-shadow: var(--shadow-input); }
+    .wsearch .wsi { color: var(--fog); font-size: 14px; line-height: 1;
+      flex: none; }
+    .wsearch input { flex: 1; min-width: 0; border: none; outline: none;
+      background: none; font: inherit; font-size: var(--fs-amount);
+      color: var(--ink); }
+    .wsearch input::placeholder { color: var(--fog); }
+    .wlink { font-size: var(--fs-body); font-weight: 700;
+      color: var(--amex-blue); cursor: pointer; white-space: nowrap;
+      flex: none; }
+    .wcheckchip { display: flex; align-items: center; gap: 6px;
+      font-size: var(--fs-body); color: var(--sub); cursor: pointer;
+      flex: none; white-space: nowrap; }
+    .wcheckchip .bx { width: 14px; height: 14px; flex: none;
+      border: 1.5px solid var(--text-disabled); border-radius: 4px;
+      display: inline-flex; align-items: center; justify-content: center; }
+    .wcheckchip.on { color: var(--navy); font-weight: 700; }
+    .wcheckchip.on .bx { background: var(--navy); border-color: var(--navy);
+      color: #fff; }
+
+    /* Column header (pinned) — its width classes are shared with the rows so
+       the columns line up. */
+    .wcolh { display: flex; align-items: center; gap: 14px; margin: 14px 20px 0;
+      padding: 0 16px 8px; border-bottom: 1px solid var(--bd2); }
+    .wcolh > div { font-size: var(--fs-sub); font-weight: 600;
+      color: var(--text-5); letter-spacing: .3px; }
+    .cw-flex { flex: 1; min-width: 0; }
+    .cw-exp { width: 80px; flex: none; text-align: right; }
+    .cw-exp-s { width: 70px; flex: none; text-align: right; }
+    .cw-chips { width: 330px; flex: none; }
+    .cw-check { width: 16px; flex: none; }
+    .cw-rchips { width: 560px; flex: none; }
+    .cw-bstat { width: 190px; flex: none; }
+    .cw-bchips { width: 300px; flex: none; }
+
+    /* The one scroll region — nothing else in the overlay scrolls. */
+    .wscroll { flex: 1; overflow-y: auto; overflow-x: hidden;
+      display: flex; flex-direction: column; gap: 6px; padding: 8px 20px 18px; }
+
+    /* A table row (white card). */
+    .wrow { display: flex; align-items: center; gap: 14px; background: #fff;
+      border: 1px solid var(--line); border-radius: var(--r-item);
+      corner-shape: var(--se); padding: var(--row-pad);
+      box-shadow: var(--shadow-card); }
+    /* Selected addable row: a soft ring, drawn with inset shadow so the row's
+       box size (and column alignment) never shifts. */
+    .wrow.sel { border-color: var(--selected-border);
+      box-shadow: 0 0 0 1px var(--selected-border) inset, var(--shadow-card); }
+    .wrow.done { opacity: .7; }
+    .wcell-mn { flex: 1; min-width: 0; display: flex; align-items: center;
+      gap: 11px; }
+    .wlogo { width: 38px; height: 38px; border-radius: 9px;
+      corner-shape: var(--se); flex: none; overflow: hidden; display: flex;
+      align-items: center; justify-content: center; font-size: 11px;
+      font-weight: 800; color: #fff; }
+    .wlogo img { width: 100%; height: 100%; object-fit: contain;
+      background: #fff; }
+    .wtxt { min-width: 0; }
+    .wnm { font-size: var(--fs-title); font-weight: 700; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wds { font-size: var(--fs-body); color: var(--text-4); margin-top: 1px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wexp { font-size: var(--fs-amount); color: var(--text-4);
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .wexp.urgent { font-weight: 700; color: var(--red); }
+
+    /* Per-card status chips — the wide core construct (StatusChip). */
+    .wchips { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+    .wchip { display: inline-flex; align-items: center; gap: 4px;
+      font-size: var(--fs-caption); font-weight: 600; color: var(--sub);
+      background: var(--panel); border: 1px solid var(--surface-seg);
+      border-radius: 7px; corner-shape: var(--se); padding: 4px 9px;
+      white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .wchip.click { cursor: pointer; }
+    .wchip.green { font-weight: 700; color: var(--green);
+      background: var(--green-tint); border-color: var(--green-border); }
+    .wchip.red { font-weight: 700; color: var(--red);
+      background: var(--red-tint); border-color: var(--red-border); }
+    .wchip.amber { font-weight: 700; color: var(--amber);
+      background: var(--amber-tint); border-color: var(--amber-border); }
+    .wchip.sel { font-weight: 700; color: #fff; background: var(--amex-blue);
+      border-color: var(--amex-blue); }
+    .wsw { width: 18px; height: 12px; border-radius: 2.5px; flex: none;
+      overflow: hidden; background: var(--card-silver); }
+    .wsw img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .wchip .spin { width: 11px; height: 11px; border-width: 2px; }
+    .wmore { font-size: var(--fs-caption); font-weight: 600;
+      color: var(--text-4); padding: 3px 4px; cursor: pointer;
+      align-self: center; white-space: nowrap; }
+    .wretry { font-size: var(--fs-body); font-weight: 700;
+      color: var(--amex-blue); cursor: pointer; padding: 3px 6px;
+      white-space: nowrap; }
+
+    /* Result / running header (icon + title + inline counts). */
+    .wrhd { display: flex; align-items: center; gap: 12px; background: #fff;
+      padding: 16px 20px; border-bottom: 1px solid var(--line2); flex: none; }
+    .wrhd .cir { width: 34px; height: 34px; border-radius: 50%; flex: none;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 800; }
+    .wrhd .cir.ok { background: var(--green-tint); color: var(--green); }
+    .wrhd .cir.bad { background: var(--amberbg); color: var(--amber); }
+    .wrhd .cir.run { background: var(--amex-blue-tint); }
+    .wrhd .tt { flex: 1; min-width: 0; }
+    .wrhd .t1 { font-size: var(--fs-header); font-weight: 800;
+      color: var(--navy); letter-spacing: -.2px; }
+    .wrhd .t2 { font-size: var(--fs-caption); color: var(--text-4);
+      margin-top: 1px; font-variant-numeric: tabular-nums; }
+    .wrstats { display: flex; gap: 14px; margin-right: 6px; }
+    .wrstat { text-align: center; }
+    .wrstat .n { font-size: var(--fs-stat); font-weight: 800;
+      font-variant-numeric: tabular-nums; }
+    .wrstat .l { font-size: var(--fs-caption); color: var(--text-4); }
+    .wprog { flex: none; background: #fff; padding: 0 20px 14px;
+      border-bottom: 1px solid var(--line2); }
+
+    /* Result / running pinned footer (legend + back, or the running note). */
+    .wfoot { display: flex; align-items: center; gap: 10px; flex: none;
+      background: #fff; border-top: 1px solid var(--line2); padding: 12px 20px; }
+    .wfoot .txt { flex: 1; font-size: var(--fs-caption); color: var(--text-5);
+      line-height: 1.5; }
+    .wfoot .txt b { color: var(--amber); font-weight: 700; }
+    .wbtn { border: 1px solid var(--border-1); background: #fff;
+      border-radius: 9px; corner-shape: var(--se); padding: 8px 16px;
+      font-size: var(--fs-amount); font-weight: 700; color: var(--amex-blue);
+      cursor: pointer; white-space: nowrap; flex: none;
+      transition: background .15s ease; }
+    .wbtn:hover { background: var(--hover-on-white); }
+
+    /* Wide Benefits: compact inline stat tiles + period sections. */
+    .wbstats { display: flex; gap: 8px; flex: none; }
+    .wbtile { background: #fff; border: 1px solid var(--line);
+      border-radius: var(--r-item); corner-shape: var(--se); padding: 9px 16px;
+      text-align: center; }
+    .wbtile .n { font-size: var(--fs-stat); font-weight: 800;
+      font-variant-numeric: tabular-nums; }
+    .wbtile .n.navy { color: var(--navy); }
+    .wbtile .n.green { color: var(--green); }
+    .wbtile .n.ink { color: var(--ink); }
+    .wbtile .l { font-size: var(--fs-sub); color: var(--sub); margin-top: 1px; }
+    .wbgh { display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 0 4px; margin-top: 10px; }
+    .wbgh.first { margin-top: 2px; }
+    .wbgh-l { display: flex; align-items: center; gap: 8px; }
+    .wbgh-lbl { font-size: var(--fs-sub); font-weight: 700; color: var(--sub);
+      letter-spacing: .4px; }
+    .wbgh-badge { font-size: var(--fs-caption); font-weight: 600;
+      color: var(--sub); background: var(--surface-count); border-radius: 5px;
+      padding: 2px 8px; font-variant-numeric: tabular-nums; }
+    .wbgh-badge.amber { font-weight: 700; color: var(--amber);
+      background: var(--amber-tint); }
+    .wbgh-sum { font-size: var(--fs-sub); color: var(--text-5);
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* A benefit row stacks its main line over an optional micro-bar. */
+    .wrow.wbenefit { flex-direction: column; align-items: stretch; gap: 0; }
+    .wrow.wbenefit.done { background: var(--green-row);
+      border-color: var(--green-row-border); box-shadow: none; }
+    .wbmain { display: flex; align-items: center; gap: 14px; }
+    .wb-name { flex: 1; min-width: 0; font-size: var(--fs-title);
+      font-weight: 700; color: var(--ink); }
+    .wrow.wbenefit.done .wb-name { color: var(--archived-text); }
+    .wb-stat { display: flex; align-items: baseline; justify-content: flex-end;
+      gap: 8px; }
+    .wb-amt { font-size: var(--fs-amount); font-weight: 700; color: var(--ink);
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .wb-amt.done { color: var(--green); }
+    .wb-amt .of { font-size: var(--fs-caption); font-weight: 400;
+      color: var(--text-5); }
+    .wb-amt.done .of { color: var(--archived-sub); }
+    .wb-word { font-size: var(--fs-caption); color: var(--text-4);
+      white-space: nowrap; }
+    .wb-word.used { font-weight: 700; color: var(--green); }
+    .wbmicro { margin-top: 9px; height: 3px; border-radius: 1.5px;
+      background: var(--track); overflow: hidden; }
+    .wbmicro > div { height: 100%; border-radius: 1.5px; background: var(--green); }
+    .wb-inact { font-size: var(--fs-body); font-weight: 700; color: var(--amber);
+      white-space: nowrap; flex: none; }
+    /* Wide untrackable / empty helpers reuse the sidebar bfoot-note tone. */
+    .wnote { padding: 12px 20px 0; font-size: var(--fs-caption);
+      color: var(--fog); line-height: 1.5; }
+    .wsec { display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 0 4px; margin-top: 10px; }
+    .wsec .lbl { font-size: var(--fs-sub); font-weight: 600; color: var(--mut);
+      letter-spacing: .3px; }
+    .wsec .cnt { font-size: var(--fs-sub); color: var(--fog);
+      font-variant-numeric: tabular-nums; }
+    .wcardsec { display: flex; align-items: center; gap: 10px; padding: 4px 4px;
+      margin-top: 10px; }
+    .wcardsec .thumb { width: 32px; height: 21px; border-radius: 4px;
+      corner-shape: var(--se); flex: none; overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); background: var(--card-silver); }
+    .wcardsec .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .wcardsec .nm { flex: 1; min-width: 0; font-size: var(--fs-amount);
+      font-weight: 700; color: var(--ink); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums; }
+    .wcardsec .sum { font-size: var(--fs-sub); color: var(--mut); flex: none;
+      white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .wcardsec .sum b { color: var(--green); font-weight: 700; }
+    .wcardsec .sum b.mut { color: var(--sub); }
   `;
 
   /**
@@ -3532,6 +3918,41 @@
       '<polyline points="21 3 21 9 15 9"></polyline></svg>';
 
   /**
+   * "Expand to the wide overlay" glyph (arrows to the corners), shown in the
+   * sidebar header's first button slot. Inherits color via `currentColor`.
+   * @const {string}
+   */
+  const EXPAND_SVG =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" style="display:block">' +
+      '<polyline points="15 3 21 3 21 9"></polyline>' +
+      '<polyline points="9 21 3 21 3 15"></polyline>' +
+      '<line x1="21" y1="3" x2="14" y2="10"></line>' +
+      '<line x1="3" y1="21" x2="10" y2="14"></line></svg>';
+
+  /**
+   * "Collapse to the sidebar" glyph (arrows to opposite corners), shown in the
+   * wide header's 收窄 pill. Inherits color via `currentColor`.
+   * @const {string}
+   */
+  const COLLAPSE_SVG =
+      '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" style="display:block">' +
+      '<polyline points="9 3 3 3 3 9"></polyline>' +
+      '<polyline points="15 21 21 21 21 15"></polyline>' +
+      '<line x1="3" y1="3" x2="10" y2="10"></line>' +
+      '<line x1="21" y1="21" x2="14" y2="14"></line></svg>';
+
+  /** A small check mark for the wide "只看多卡可加" filled checkbox. */
+  const CHECK_SVG =
+      '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="#fff" stroke-width="3.5" stroke-linecap="round" ' +
+      'stroke-linejoin="round" style="display:block">' +
+      '<polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+  /**
    * The "multi-card only" condition-filter glyph: two overlapping rounded
    * rectangles, inheriting the chip's text color via `currentColor`.
    * @const {string}
@@ -3614,6 +4035,19 @@
       el('div', {class: 't1', text: opts.title}),
       opts.subtitle ? el('div', {class: 't2', text: opts.subtitle}) : null));
     if (opts.right) row.append(opts.right);
+    // Canonical button order (PanelHeader spec): 展开⤢/收窄 · EN · ⟳ · ×.
+    // The density toggle only appears on the browse views (opts.expand) and
+    // only when the window is wide enough to hold the overlay at all.
+    if (opts.expand && canGoWide()) {
+      const wide = currentDensity() === 'wide';
+      const btn = el('button', {
+        class: wide ? 'densbtn' : 'rf dens',
+        title: wide ? t('collapseSidebar') : t('expandWide'),
+        onclick: () => toggleDensity()});
+      btn.innerHTML = wide ? COLLAPSE_SVG : EXPAND_SVG;
+      if (wide) btn.append(document.createTextNode(t('collapseSidebar')));
+      row.append(btn);
+    }
     if (opts.lang) {
       // Shows the language it switches TO (the classic i18n toggle pattern).
       row.append(el('button', {class: 'rf lang', title: t('switchLang'),
@@ -3666,15 +4100,26 @@
   function render() {
     if (!panelRoot) return;
     const shell = panelRoot.getElementById('shell');
+    const wide = currentDensity() === 'wide';
+    // The overlay's font scale + geometry key off data-density; the sidebar
+    // leaves it unset so no wide rule applies (zero sidebar regression).
+    if (wide) shell.setAttribute('data-density', 'wide');
+    else shell.removeAttribute('data-density');
+    applyDensityGeometry(wide);
     // Preserve the scroll position across a same-view rebuild (e.g. expanding a
-    // row or toggling a filter), so the list doesn't jump back to the top.
-    const viewKey = state.tab === 'benefits' ? 'benefits' : state.view;
-    const oldBody = shell.querySelector('.body');
+    // row or toggling a filter). The scroller is `.body` (sidebar) or the wide
+    // list region `.wscroll`; the density prefix means a mode switch never
+    // restores one layout's scrollTop into the other.
+    const viewKey = (wide ? 'w:' : 's:') +
+        (state.tab === 'benefits' ? 'benefits' : state.view);
+    const oldScroller = shell.querySelector('.body, .wscroll');
     const keepScroll =
-        oldBody && viewKey === lastViewKey ? oldBody.scrollTop : 0;
+        oldScroller && viewKey === lastViewKey ? oldScroller.scrollTop : 0;
     lastViewKey = viewKey;
     shell.textContent = '';
-    if (state.tab === 'benefits') {
+    if (wide) {
+      renderWide(shell);
+    } else if (state.tab === 'benefits') {
       renderBenefitsTab(shell);
     } else {
       const views = {list: renderListView, loading: renderLoadingView,
@@ -3683,8 +4128,8 @@
         confirm: renderConfirmView, language: renderLanguageView};
       (views[state.view] || renderListView)(shell);
     }
-    const newBody = shell.querySelector('.body');
-    if (newBody && keepScroll) newBody.scrollTop = keepScroll;
+    const newScroller = shell.querySelector('.body, .wscroll');
+    if (newScroller && keepScroll) newScroller.scrollTop = keepScroll;
     // Keep the collapsed launcher in sync with a background run (e.g. the user
     // closed the panel mid-submit) so its progress / done state stays live.
     renderLauncherContent();
@@ -3743,7 +4188,7 @@
       subtitle: [t('listSubtitle',
         {offers: state.offers.length, cards: state.cards.length}),
       agoLabel(state.snapshotAt)].filter(Boolean).join(' · '),
-      lang: true, refresh: true, close: true, tabs: true,
+      expand: true, lang: true, refresh: true, close: true, tabs: true,
     }));
 
     const body = el('div', {class: 'body'});
@@ -4392,6 +4837,7 @@
   function refreshFooter() {
     if (!panelRoot) return;
     refreshListHead();
+    refreshWideSelectAll();
     const ft = panelRoot.getElementById('ft');
     const sm = panelRoot.getElementById('sm');
     const go = panelRoot.getElementById('go');
@@ -4503,7 +4949,7 @@
     const ago = agoLabel(state.benefitsReadAt);
     if (ago) parts.push(ago);
     return {glyph: '＋', title: t('panelTitle'), subtitle: parts.join(' · '),
-      lang: true, close: true, tabs: true, ...extra};
+      expand: true, lang: true, close: true, tabs: true, ...extra};
   }
 
   /** @param {!Element} shell Panel content root. */
@@ -5100,7 +5546,7 @@
   /** @param {!Element} shell Panel content root. */
   function renderEmptyView(shell) {
     shell.append(renderHeader({glyph: '＋', title: t('panelTitle'),
-      close: true, lang: true, refresh: true, tabs: true}));
+      expand: true, close: true, lang: true, refresh: true, tabs: true}));
     const reload = el('div', {class: 'btn', onclick: () => refresh()});
     const ic = el('span', {style: 'display:flex'});
     ic.innerHTML = REFRESH_SVG;
@@ -5115,7 +5561,7 @@
   /** @param {!Element} shell Panel content root. */
   function renderErrorView(shell) {
     shell.append(renderHeader({glyph: '＋', title: t('panelTitle'),
-      close: true, lang: true, err: true}));
+      expand: true, close: true, lang: true, err: true}));
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
       el('div', {class: 'cir bad', text: '!'}),
       el('div', {class: 'h', text: t('errorTitle')}),
@@ -5356,6 +5802,832 @@
     render();
   }
 
+  // ---- wide mode (G4): the second density ----------------------------------
+  // Same skeleton, denser table layout. These renderers reuse every pure
+  // function and every piece of `state` the sidebar uses (buildOfferIndex /
+  // buildAddedIndex / addedStats / buildBenefitPeriodGroups / benefitStats /
+  // planRetry / groupResultsByOffer …); no business logic is duplicated, only
+  // the presentation differs. Entered only from render() when the density is
+  // wide, so nothing here runs in the sidebar.
+
+  /** @param {string} token Card token. @return {!Element} An 18×12 swatch. */
+  function wideSwatch(token) {
+    const sw = el('span', {class: 'wsw'});
+    const cd = cardOf(token);
+    if (cd?.art) sw.append(el('img', {src: cd.art, alt: ''}));
+    else sw.style.background = swatchStyle(token);
+    return sw;
+  }
+
+  /** @param {string} token Card token. @return {string} `⋯1234` label. */
+  function wideDigits(token) {
+    const cd = cardOf(token);
+    return `⋯${cd ? cd.digits : String(token).slice(-4)}`;
+  }
+
+  /**
+   * A per-card status chip (the wide core construct). Tone encodes the state:
+   * gray (default), green, red, amber, or `sel` (bright-blue submit-selection).
+   * @param {{token: string, tone: (string|undefined), suffix: (string|
+   *          undefined), onClick: (function()|undefined)}} opts Chip options.
+   * @return {!Element} The chip.
+   */
+  function wideChip(opts) {
+    let cls = 'wchip';
+    if (opts.tone && opts.tone !== 'gray') cls += ` ${opts.tone}`;
+    if (opts.onClick) cls += ' click';
+    const chip = el('span', {class: cls});
+    chip.append(wideSwatch(opts.token));
+    chip.append(document.createTextNode(
+      opts.suffix ? `${wideDigits(opts.token)} ${opts.suffix}` :
+        wideDigits(opts.token)));
+    if (opts.onClick) chip.onclick = opts.onClick;
+    return chip;
+  }
+
+  /** @param {string} name @param {string} image @return {!Element} Logo. */
+  function wideLogo(name, image) {
+    const logo = el('div', {class: 'wlogo'});
+    if (image) {
+      logo.append(el('img', {src: image, alt: '', loading: 'lazy'}));
+    } else {
+      const [bg, fg] = logoColors(name);
+      logo.style.background = bg;
+      logo.style.color = fg;
+      logo.textContent = merchantInitials(name);
+    }
+    return logo;
+  }
+
+  /**
+   * The "商家 / OFFER" cell shared by the wide offer tables: a logo over a
+   * stacked name + (optional) description, taking the flex column.
+   * @param {string} name @param {string} desc @param {string} image
+   * @param {string=} sub Explicit subtitle (overrides `desc` when set).
+   * @return {!Element} The cell.
+   */
+  function wideMnCell(name, desc, image, sub) {
+    const txt = el('div', {class: 'wtxt'},
+      el('div', {class: 'wnm', text: name}),
+      (sub || desc) ? el('div', {class: 'wds', text: sub || desc}) : null);
+    return el('div', {class: 'wcell-mn cw-flex'}, wideLogo(name, image), txt);
+  }
+
+  /** @param {string} exp Raw expiry text. @return {string} `MM/DD` or ''. */
+  function shortExpiry(exp) {
+    const m = /(\d{1,2})\/(\d{1,2})/.exec(exp || '');
+    return m ? `${m[1]}/${m[2]}` : '';
+  }
+
+  /** Dispatches the wide overlay to the right view. @param {!Element} shell */
+  function renderWide(shell) {
+    if (state.tab === 'benefits') {
+      if (state.benefitsError) return renderBenefitsError(shell);
+      if (!state.benefitsLoaded) return renderBenefitsLoading(shell);
+      return renderWideBenefits(shell);
+    }
+    switch (state.view) {
+      case 'running': return renderWideRunning(shell);
+      case 'result': return renderWideResult(shell);
+      case 'confirm': return renderConfirmView(shell);
+      case 'language': return renderLanguageView(shell);
+      case 'empty': return renderEmptyView(shell);
+      case 'error': return renderErrorView(shell);
+      case 'loading': return renderLoadingView(shell);
+      default: return renderWideOffers(shell);
+    }
+  }
+
+  /** @return {!Element} The 可加 | 已加 pill for the wide control row. */
+  function wideSubPills() {
+    const addableN =
+        state.offers.filter((g) => addableCards(g).length > 0).length;
+    const addedN = buildAddedIndex(state.cards, state.redeemed.byToken).length;
+    const mk = (key, label, n) => {
+      const pill = el('div',
+        {class: state.offersSub === key ? 'subpill on' : 'subpill',
+          text: `${label} ${n}`});
+      pill.onclick = () => {
+        if (state.offersSub === key) return;
+        state.offersSub = key;
+        state.addedMenuOpen = false;
+        render();
+      };
+      return pill;
+    };
+    return el('div', {class: 'subpills'},
+      mk('addable', t('subAddable'), addableN),
+      mk('added', t('subAdded'), addedN));
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function renderWideOffers(shell) {
+    shell.append(renderHeader({
+      glyph: '＋', title: t('panelTitle'),
+      subtitle: [t('listSubtitle',
+        {offers: state.offers.length, cards: state.cards.length}),
+      agoLabel(state.snapshotAt)].filter(Boolean).join(' · '),
+      expand: true, lang: true, refresh: true, close: true, tabs: true,
+    }));
+    if (state.offersSub === 'added') renderWideAdded(shell);
+    else renderWideAddable(shell);
+  }
+
+  /** @return {!Array<!OfferGroup>} Wide-addable offers (query + 只看多卡). */
+  function visibleAddableWide() {
+    const q = state.query;
+    return state.offers.filter((g) => {
+      if (addableCards(g).length === 0) return false;
+      if (q && !g.name.toLowerCase().includes(q)) return false;
+      if (state.multiOnly && addableCards(g).length < 2) return false;
+      return true;
+    });
+  }
+
+  /** @param {!Element} shell Panel content root (9c). */
+  function renderWideAddable(shell) {
+    const top = el('div', {class: 'wtop'});
+    const search = el('input', {type: 'search', value: state.query,
+      placeholder: t('searchOffers')});
+    search.oninput = (e) => {
+      state.query = e.target.value.trim().toLowerCase();
+      fillWideAddableRows(shell);
+      refreshFooter();
+    };
+    const box = el('div', {class: 'wsearch'},
+      el('span', {class: 'wsi', text: '⌕'}), search);
+    const multi = el('div',
+      {class: state.multiOnly ? 'wcheckchip on' : 'wcheckchip'});
+    const bx = el('span', {class: 'bx'});
+    if (state.multiOnly) bx.innerHTML = CHECK_SVG;
+    multi.append(bx, document.createTextNode(t('multiAddableOnly')));
+    multi.onclick = () => {
+      state.multiOnly = !state.multiOnly;
+      render();
+    };
+    const selall = el('div', {class: 'wlink', id: 'wselall'});
+    top.append(el('div', {class: 'wctlrow'},
+      wideSubPills(), box, multi, selall));
+    top.append(el('div', {class: 'wcolh'},
+      el('div', {class: 'cw-check'}),
+      el('div', {class: 'cw-flex', text: t('colMerchantOffer')}),
+      el('div', {class: 'cw-exp-s', text: t('colExpiry')}),
+      el('div', {class: 'cw-chips', text: t('colChooseCards')})));
+    shell.append(top);
+    shell.append(el('div', {class: 'wscroll', id: 'wscroll'}));
+    fillWideAddableRows(shell);
+    shell.append(renderFooter());
+    refreshFooter();
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function fillWideAddableRows(shell) {
+    const scroll = shell.querySelector('#wscroll');
+    if (!scroll) return;
+    scroll.textContent = '';
+    const groups = visibleAddableWide();
+    if (!groups.length) {
+      scroll.append(el('div', {class: 'msg', style: 'padding:32px'},
+        el('div', {class: 'note',
+          text: state.query ? t('noMatchingOffers') : t('emptyTitle')})));
+      return;
+    }
+    for (const g of groups) scroll.append(renderWideAddableRow(g));
+  }
+
+  /**
+   * One wide-addable row: the offer-level select-all checkbox, the merchant
+   * cell, the expiry, and one selectable chip per addable card (bright-blue =
+   * selected, the submit-type selection). Chip / checkbox toggles update in
+   * place (no full re-render), preserving scroll and focus.
+   * @param {!OfferGroup} g Offer group.
+   * @return {!Element} The row.
+   */
+  function renderWideAddableRow(g) {
+    const addable = addableCards(g);
+    const chosen = () => state.selected.get(g.key) || new Set();
+    const row = el('div', {class: 'wrow'});
+    const check = el('input', {type: 'checkbox', class: 'cw-check'});
+    const chipEls = new Map();
+
+    const syncRow = () => {
+      const set = chosen();
+      check.checked = set.size > 0;
+      check.indeterminate = set.size > 0 && set.size < addable.length;
+      row.classList.toggle('sel', set.size > 0);
+      for (const c of addable) {
+        chipEls.get(c.token).classList.toggle('sel', set.has(c.token));
+      }
+    };
+    check.onclick = (e) => {
+      e.stopPropagation();
+      if (check.checked) {
+        state.selected.set(g.key, new Set(addable.map((c) => c.token)));
+      } else {
+        state.selected.delete(g.key);
+      }
+      syncRow();
+      refreshFooter();
+    };
+
+    const chips = el('div', {class: 'wchips cw-chips'});
+    for (const c of addable) {
+      const chip = wideChip({token: c.token, tone: 'gray', onClick: () => {
+        const set = new Set(chosen());
+        if (set.has(c.token)) set.delete(c.token);
+        else set.add(c.token);
+        if (set.size) state.selected.set(g.key, set);
+        else state.selected.delete(g.key);
+        syncRow();
+        refreshFooter();
+      }});
+      chip.classList.add('click');
+      chipEls.set(c.token, chip);
+      chips.append(chip);
+    }
+
+    const exp = el('div',
+      {class: 'wexp cw-exp-s', text: shortExpiry(g.expiry)});
+    row.append(check, wideMnCell(g.name, g.description, g.image), exp, chips);
+    syncRow();
+    return row;
+  }
+
+  /** Updates the wide 全选可加 / 清空 link in place (called by refreshFooter). */
+  function refreshWideSelectAll() {
+    const link = panelRoot.getElementById('wselall');
+    if (!link) return;
+    if (state.selected.size > 0) {
+      link.textContent = t('clearSelection');
+      link.onclick = () => {
+        state.selected.clear();
+        render();
+      };
+    } else {
+      link.textContent = t('selectAllAddable');
+      link.onclick = () => {
+        for (const g of visibleAddableWide()) {
+          const a = addableCards(g);
+          if (a.length) {
+            state.selected.set(g.key, new Set(a.map((c) => c.token)));
+          }
+        }
+        render();
+      };
+    }
+  }
+
+  /** @param {!Element} shell Panel content root (9a). */
+  function renderWideAdded(shell) {
+    const top = el('div', {class: 'wtop'});
+    const search = el('input', {type: 'search', value: state.query,
+      placeholder: t('searchOffers')});
+    search.oninput = (e) => {
+      state.query = e.target.value.trim().toLowerCase();
+      fillWideAddedRows(shell);
+    };
+    const box = el('div', {class: 'wsearch'},
+      el('span', {class: 'wsi', text: '⌕'}), search);
+    const ctl = el('div', {class: 'wctlrow'}, wideSubPills(), box);
+    const groups0 = buildAddedIndex(state.cards, state.redeemed.byToken);
+    const hasCat = groups0.some((g) => g.category);
+    ctl.append(renderAddedGroupDropdown(hasCat, effectiveAddedMode(hasCat)));
+    top.append(ctl);
+    top.append(renderAddedCardChips());
+    top.append(el('div', {class: 'wcolh'},
+      el('div', {class: 'cw-flex', text: t('colMerchantOffer')}),
+      el('div', {class: 'cw-exp', text: t('colExpiry')}),
+      el('div', {class: 'cw-chips', text: t('colCardStatus')})));
+    shell.append(top);
+    shell.append(el('div', {class: 'wscroll', id: 'wscroll'}));
+    fillWideAddedRows(shell);
+    shell.append(el('div', {class: 'bfoot'},
+      el('div', {class: 'note', text: t('addedFootnote')})));
+    // Click-outside scrim for the grouping dropdown — same relationship as the
+    // sidebar (.wtop is a static child of the relative .p, so .adrop.open's
+    // z-index still lifts it above the scrim; the .wtop isn't a scroll clip).
+    if (state.addedMenuOpen) {
+      shell.append(el('div', {class: 'ddscrim', onclick: () => {
+        state.addedMenuOpen = false;
+        render();
+      }}));
+    }
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function fillWideAddedRows(shell) {
+    const scroll = shell.querySelector('#wscroll');
+    if (!scroll) return;
+    scroll.textContent = '';
+    const r = state.redeemed;
+    if (r.error) {
+      scroll.append(el('div', {class: 'msg', style: 'padding:28px'},
+        el('div', {class: 'note'}, el('b', {text: t('addedError')}), ' ',
+          el('a', {class: 'lnk', text: t('retry'),
+            onclick: () => loadRedeemed(true)}))));
+      return;
+    }
+    if (!r.loaded) {
+      if (!r.loading) loadRedeemed();
+      scroll.append(el('div', {class: 'msg', style: 'padding:32px'},
+        el('div', {style: 'display:flex;gap:10px;justify-content:center;' +
+            'align-items:center'},
+        el('span', {class: 'spin'}),
+        el('span', {class: 'note', text: t('addedLoading')}))));
+      return;
+    }
+    const q = state.query;
+    const cf = state.addedCardFilter;
+    const single = cf !== 'all';
+    const all = buildAddedIndex(state.cards, r.byToken);
+    const mode = effectiveAddedMode(all.some((g) => g.category));
+    let groups = all.filter((g) =>
+      (!q || g.name.toLowerCase().includes(q)) &&
+      (!single || g.cards.some((c) => c.token === cf)));
+    if (!groups.length) {
+      scroll.append(el('div', {class: 'msg', style: 'padding:32px'},
+        el('div', {class: 'note',
+          text: q ? t('noMatchingOffers') : t('noAddedOffers')})));
+      return;
+    }
+    if (mode === 'card') {
+      if (single) {
+        groups = groups.map((g) =>
+          ({...g, cards: g.cards.filter((c) => c.token === cf)}));
+      }
+      for (const cg of groupAddedBy(groups, 'card')) {
+        scroll.append(renderWideCardSection(cg));
+      }
+      return;
+    }
+    if (mode === 'category') {
+      for (const sec of groupAddedBy(groups, 'category')) {
+        scroll.append(el('div', {class: 'wsec'},
+          el('span', {class: 'lbl',
+            text: sec.category ? sec.category.toUpperCase() :
+              t('uncategorized')}),
+          el('span', {class: 'cnt', text: t('nItems',
+            {n: sec.offers.length})})));
+        for (const g of sec.offers) scroll.append(renderWideAddedRow(g, cf));
+      }
+      return;
+    }
+    for (const g of groups) scroll.append(renderWideAddedRow(g, cf));
+  }
+
+  /**
+   * One wide 已加 row: merchant cell, expiry / days-left, and one status chip
+   * per card — gray = added, awaiting spend; green `⋯尾号 ✓ $X` = cashback
+   * posted — with the overflow collapsed to an interactive `+N`.
+   * @param {!Object} g An added-offer group.
+   * @param {string} cf `'all'` or a single card token.
+   * @return {!Element} The row.
+   */
+  function renderWideAddedRow(g, cf) {
+    const exp = el('div', {class: 'wexp cw-exp'});
+    if (Number.isFinite(g.daysLeft)) {
+      if (g.daysLeft <= 7) exp.classList.add('urgent');
+      exp.textContent = daysLabel(g.daysLeft);
+    } else {
+      exp.textContent = shortExpiry(g.expiry);
+    }
+    const chips = el('div', {class: 'wchips cw-chips'});
+    fillWideAddedChips(chips, g, cf);
+    return el('div', {class: 'wrow'},
+      wideMnCell(g.name, g.description, g.image), exp, chips);
+  }
+
+  /**
+   * Fills an added row's status chips, capping at four with an interactive
+   * `+N` that reveals the rest (state.wideChipsExpanded) without a re-render.
+   * @param {!Element} container Chip container. @param {!Object} g Group.
+   * @param {string} cf `'all'` or a card token.
+   */
+  function fillWideAddedChips(container, g, cf) {
+    container.textContent = '';
+    const cards = cf === 'all' ? g.cards :
+      g.cards.filter((c) => c.token === cf);
+    const expanded = state.wideChipsExpanded.has(g.key);
+    const LIMIT = 4;
+    const show = expanded ? cards : cards.slice(0, LIMIT);
+    for (const c of show) {
+      let tone = 'gray';
+      let suffix = '';
+      if (c.redeemed) {
+        tone = 'green';
+        suffix = '✓';
+        if (c.redeemed.amount > 0) {
+          suffix += ` ${c.redeemed.unit === 'points' ?
+            fmtPoints(c.redeemed.amount) : fmtMoney(c.redeemed.amount)}`;
+        }
+      }
+      container.append(wideChip({token: c.token, tone, suffix}));
+    }
+    const hidden = cards.length - show.length;
+    if (hidden > 0) {
+      const more = el('div', {class: 'wmore', text: `+${hidden}`});
+      more.onclick = () => {
+        state.wideChipsExpanded.add(g.key);
+        fillWideAddedChips(container, g, cf);
+      };
+      container.append(more);
+    }
+  }
+
+  /**
+   * One 按卡 section (wide): a card header (thumbnail + family ⋯digits + summary)
+   * over that card's offers as single-card rows.
+   * @param {!Object} cg A by-card group from {@link buildAddedByCard}.
+   * @return {!DocumentFragment} The section.
+   */
+  function renderWideCardSection(cg) {
+    const frag = document.createDocumentFragment();
+    const cd = cardOf(cg.token);
+    const thumb = el('div', {class: 'thumb'});
+    if (cd?.art) thumb.append(el('img', {src: cd.art, alt: ''}));
+    else thumb.style.background = swatchStyle(cg.token);
+    const family = cd ? cd.family : '';
+    const digits = cd ? cd.digits : String(cg.token).slice(-4);
+    const nm = el('div', {class: 'nm'});
+    if (family) nm.append(document.createTextNode(`${family} `));
+    nm.append(el('span', {text: `⋯${digits}`}));
+    const sum = el('div', {class: 'sum'});
+    sum.append(document.createTextNode(
+      `${t('nItems', {n: cg.offers.length})} `));
+    if (cg.redeemedCount > 0) {
+      const parts = [];
+      if (cg.totalRedeemedUsd > 0) parts.push(fmtMoney(cg.totalRedeemedUsd));
+      if (cg.totalRedeemedPoints > 0) {
+        parts.push(fmtPoints(cg.totalRedeemedPoints));
+      }
+      sum.append(document.createTextNode('· '),
+        el('b', {text: t('cardGroupBack', {amt: parts.join(' + ')})}));
+    } else {
+      sum.append(document.createTextNode('· '),
+        el('b', {class: 'mut', text: t('cardGroupPending')}));
+    }
+    frag.append(el('div', {class: 'wcardsec'}, thumb, nm, sum));
+    for (const o of cg.offers) frag.append(renderWideCardOfferRow(o, cg.token));
+    return frag;
+  }
+
+  /**
+   * One offer row inside a 按卡 wide section: merchant cell, this card's own
+   * days-left / posted status, and its single status chip.
+   * @param {!Object} o A per-card offer from {@link buildAddedByCard}.
+   * @param {string} token The card token.
+   * @return {!Element} The row.
+   */
+  function renderWideCardOfferRow(o, token) {
+    const exp = el('div', {class: 'wexp cw-exp'});
+    let tone = 'gray';
+    let suffix = '';
+    if (o.redeemed) {
+      tone = 'green';
+      suffix = '✓';
+      if (o.redeemed.amount > 0) {
+        suffix += ` ${o.redeemed.unit === 'points' ?
+          fmtPoints(o.redeemed.amount) : fmtMoney(o.redeemed.amount)}`;
+      }
+      if (o.redeemed.date) exp.textContent = o.redeemed.date;
+    } else if (Number.isFinite(o.daysLeft)) {
+      if (o.daysLeft <= 7) exp.classList.add('urgent');
+      exp.textContent = daysLabel(o.daysLeft);
+    } else {
+      exp.textContent = shortExpiry(o.expiry);
+    }
+    const chips = el('div', {class: 'wchips cw-chips'},
+      wideChip({token, tone, suffix}));
+    return el('div', {class: 'wrow'},
+      wideMnCell(o.name, o.description, o.image), exp, chips);
+  }
+
+  /** @param {!Element} shell Panel content root (9d). */
+  function renderWideResult(shell) {
+    const results = [...state.lastResults.values()];
+    const n = (s) => results.filter((r) => r.state === s).length;
+    const throttled = results.some(
+      (r) => r.blocked || r.state === ResultState.SKIPPED);
+    const hd = el('div', {class: 'wrhd'});
+    hd.append(el('div', {class: throttled ? 'cir bad' : 'cir ok',
+      text: throttled ? '!' : '✓'}));
+    hd.append(el('div', {class: 'tt'},
+      el('div', {class: 't1',
+        text: throttled ? t('resultTitleStopped') : t('resultTitleOk')}),
+      el('div', {class: 't2', text: t('wideResultSub', {n: results.length})})));
+    const stat = (val, label, cls) => el('div', {class: 'wrstat'},
+      el('div', {class: `n ${cls}`, text: String(val)}),
+      el('div', {class: 'l', text: label}));
+    hd.append(el('div', {class: 'wrstats'},
+      stat(n(ResultState.VERIFIED), t('confirmedAdded'), 'g'),
+      stat(n(ResultState.FAILED), t('addFailed'), 'r'),
+      stat(n(ResultState.GHOST) + n(ResultState.UNVERIFIED),
+        t('dedupeOrUnknown'), 'am')));
+    hd.append(el('button', {class: 'cl', title: t('close'), text: '×',
+      onclick: () => hidePanel()}));
+    shell.append(hd);
+    shell.append(el('div', {class: 'wcolh'},
+      el('div', {class: 'cw-flex', text: t('colOffer')}),
+      el('div', {class: 'cw-rchips', text: t('colCardResult')})));
+    const scroll = el('div', {class: 'wscroll'});
+    for (const g of groupResultsByOffer(results)) {
+      scroll.append(renderWideResultRow(g));
+    }
+    shell.append(scroll);
+    shell.append(el('div', {class: 'wfoot'},
+      el('div', {class: 'txt', text: t('resultLegend')}),
+      el('div', {class: 'wbtn', text: t('backToList'),
+        onclick: () => backToList()})));
+  }
+
+  /**
+   * One wide result row: merchant cell (with an "N 张卡" subtitle) and one chip
+   * per card encoding the outcome (✓ green / ✗ red / ? amber / ⊘ amber), plus
+   * an inline "重试失败项" link when the offer has a retryable card.
+   * @param {{key: string, name: string, results: !Array<!Object>}} g Offer.
+   * @return {!Element} The row.
+   */
+  function renderWideResultRow(g) {
+    const grp = state.offers.find((o) => o.key === g.key);
+    const chips = el('div', {class: 'wchips cw-rchips'});
+    let retryable = false;
+    for (const r of g.results) {
+      let tone = 'amber';
+      let s = '?';
+      if (r.state === ResultState.VERIFIED) {
+        tone = 'green';
+        s = '✓';
+      } else if (r.state === ResultState.FAILED) {
+        tone = 'red';
+        s = '✗';
+      } else if (r.state === ResultState.SKIPPED) {
+        s = '⊘';
+      }
+      chips.append(wideChip({token: r.token, tone, suffix: s}));
+      if ((r.state === ResultState.FAILED ||
+           r.state === ResultState.SKIPPED) && !r.gone) retryable = true;
+    }
+    if (retryable) {
+      chips.append(el('span', {class: 'wretry', text: t('retryFailed'),
+        onclick: () => retryOfferFailed(g.key)}));
+    }
+    return el('div', {class: 'wrow'},
+      wideMnCell(g.name, '', grp ? grp.image : '',
+        t('nCards', {n: g.results.length})), chips);
+  }
+
+  /**
+   * Re-runs just one offer's failed / never-submitted cards, re-planned against
+   * the current snapshot (reuses {@link planRetry}). Pairs that already landed
+   * or are gone settle in place without a resend.
+   * @param {string} key The offer group key.
+   */
+  function retryOfferFailed(key) {
+    const subset =
+        [...state.lastResults.values()].filter((r) => r.key === key);
+    const {tasks, landed, gone} = planRetry(subset, state.offers);
+    for (const r of [...landed, ...gone]) {
+      state.lastResults.set(`${r.key}|${r.token}`, r);
+    }
+    if (tasks.length) runSelected(tasks);
+    else render();
+  }
+
+  /** @param {!Element} shell Panel content root (derived: 9d × running). */
+  function renderWideRunning(shell) {
+    const run = state.run;
+    const seen = run.results.length;
+    const ok = run.results.filter((r) => r.reportedOk).length;
+    const skipped = run.results.filter((r) => r.skipped).length;
+    const fail = seen - ok - skipped;
+    const pending = run.total - seen;
+    const pct = run.total ? Math.round(seen / run.total * 100) : 0;
+    const hd = el('div', {class: 'wrhd'});
+    const cir = el('div', {class: 'cir run'});
+    cir.append(el('span', {class: 'spin'}));
+    hd.append(cir);
+    hd.append(el('div', {class: 'tt'},
+      el('div', {class: 't1', text: t('runningTitle')}),
+      el('div', {class: 't2', text: t('runningSubtitle', {n: run.total})})));
+    const stat = (val, label, cls) => el('div', {class: 'wrstat'},
+      el('div', {class: `n ${cls}`, text: String(val)}),
+      el('div', {class: 'l', text: label}));
+    const stats = el('div', {class: 'wrstats'},
+      stat(ok, t('submitOk'), 'g'),
+      stat(fail, t('submitFail'), 'r'),
+      stat(pending, t('submitting'), 'b'));
+    if (skipped) stats.append(stat(skipped, t('notSubmitted'), 'am'));
+    hd.append(stats);
+    shell.append(hd);
+    shell.append(el('div', {class: 'wprog', style: 'padding-top:12px'},
+      el('div', {class: 'bar'}, el('div', {style: `width:${pct}%`}))));
+    shell.append(el('div', {class: 'wcolh'},
+      el('div', {class: 'cw-flex', text: t('colOffer')}),
+      el('div', {class: 'cw-rchips', text: t('colCardResult')})));
+    const scroll = el('div', {class: 'wscroll'});
+    for (const offerTasks of groupTasksByOffer(run.tasks)) {
+      scroll.append(renderWideRunningRow(offerTasks));
+    }
+    shell.append(scroll);
+    shell.append(el('div', {class: 'wfoot'},
+      el('div', {class: 'txt'},
+        el('b', {text: t('runningNoteLead')}), t('runningNote'))));
+  }
+
+  /**
+   * One wide running row: an offer with a live chip per card that shows a
+   * spinner while pending, then flips to ✓ / ✗ / ⊘ as each settles (the same
+   * onSettle-driven data source as the sidebar running view).
+   * @param {!Array<!Task>} offerTasks Tasks for one offer.
+   * @return {!Element} The row.
+   */
+  function renderWideRunningRow(offerTasks) {
+    const run = state.run;
+    const first = offerTasks[0];
+    const grp = state.offers.find((o) => o.key === first.key);
+    const chips = el('div', {class: 'wchips cw-rchips'});
+    for (const task of offerTasks) {
+      const done = run.results.find(
+        (r) => r.key === task.key && r.token === task.token);
+      if (!done) {
+        const chip = el('span', {class: 'wchip'});
+        chip.append(wideSwatch(task.token),
+          document.createTextNode(wideDigits(task.token)),
+          el('span', {class: 'spin'}));
+        chips.append(chip);
+      } else if (done.skipped) {
+        chips.append(wideChip({token: task.token, tone: 'amber', suffix: '⊘'}));
+      } else if (done.reportedOk) {
+        chips.append(wideChip({token: task.token, tone: 'green', suffix: '✓'}));
+      } else {
+        chips.append(wideChip({token: task.token, tone: 'red', suffix: '✗'}));
+      }
+    }
+    return el('div', {class: 'wrow'},
+      wideMnCell(first.name, '', grp ? grp.image : '',
+        t('nCards', {n: offerTasks.length})), chips);
+  }
+
+  /** @param {!Element} shell Panel content root (12a). */
+  function renderWideBenefits(shell) {
+    shell.append(renderHeader(benefitsHeaderOpts({
+      refresh: true, onRefresh: () => loadBenefits(true)})));
+    const top = el('div', {class: 'wtop'});
+    const search = el('input', {type: 'search', value: state.benefitQuery,
+      placeholder: t('searchBenefits')});
+    search.oninput = (e) => {
+      state.benefitQuery = e.target.value;
+      fillWideBenefitRows(shell);
+    };
+    const box = el('div', {class: 'wsearch'},
+      el('span', {class: 'wsi', text: '⌕'}), search);
+    const s = benefitStats(state.benefits, state.cards, Date.now(),
+      state.benefitCardFilter);
+    const tile = (cls, val, label) => el('div', {class: 'wbtile'},
+      el('div', {class: `n ${cls}`, text: val}),
+      el('div', {class: 'l', text: label}));
+    const tiles = el('div', {class: 'wbstats'},
+      tile('navy', fmtMoney(s.thisMonthUnused), t('leftThisMonth')),
+      tile('green', fmtMoney(s.redeemedYtd), t('redeemedYtd')));
+    if (s.annualFee > 0) {
+      tiles.append(tile('navy', `${s.paybackPct}%`, t('feePayback')));
+    }
+    top.append(el('div', {class: 'wctlrow'}, box, tiles));
+    const chips = renderBenefitCardChips();
+    if (chips) top.append(chips);
+    shell.append(top);
+    shell.append(el('div', {class: 'wscroll', id: 'wscroll'}));
+    fillWideBenefitRows(shell);
+    shell.append(el('div', {class: 'bfoot'},
+      el('div', {class: 'note', text: t('benefitsFootnote')})));
+  }
+
+  /** @param {!Element} shell Panel content root. */
+  function fillWideBenefitRows(shell) {
+    const scroll = shell.querySelector('#wscroll');
+    if (!scroll) return;
+    scroll.textContent = '';
+    const q = state.benefitQuery.trim().toLowerCase();
+    const cf = state.benefitCardFilter;
+    const single = cf !== 'all';
+    let groups = state.benefits.filter((g) => matchesBenefitQuery(g, q));
+    if (single) {
+      const now = Date.now();
+      groups = groups
+        .filter((g) => g.entries.some((e) => e.token === cf))
+        .map((g) => finalizeBenefitGroup(
+          {...g, entries: g.entries.filter((e) => e.token === cf)}, now));
+    }
+    const sections = buildBenefitPeriodGroups(groups);
+    sections.forEach((pg, i) => {
+      scroll.append(renderWideBenefitHeader(pg, i === 0));
+      for (const g of pg.groups) scroll.append(renderWideBenefitRow(g));
+    });
+    if (!sections.length) {
+      scroll.append(el('div', {class: 'msg', style: 'padding:32px'},
+        el('div', {class: 'note',
+          text: q ? t('noBenefitsMatch', {q: state.benefitQuery.trim()}) :
+            t('noBenefits')})));
+    }
+    const untrack = state.benefitsUntrackable.filter((u) =>
+      (!single || u.token === cf) &&
+      (!q || u.name.toLowerCase().includes(q)));
+    if (untrack.length) scroll.append(renderBenefitUntrackable(untrack));
+  }
+
+  /**
+   * @param {!Object} pg A period section from {@link buildBenefitPeriodGroups}.
+   * @param {boolean} first Whether it is the first section (tighter top gap).
+   * @return {!Element} The wide period group header.
+   */
+  function renderWideBenefitHeader(pg, first) {
+    const left = el('div', {class: 'wbgh-l'},
+      el('span', {class: 'wbgh-lbl', text: t(`periodEvery_${pg.period}`)}));
+    if (Number.isFinite(pg.daysLeft)) {
+      const amber = benefitPeriodTone(pg.period, pg.daysLeft) === 'amber';
+      left.append(el('span', {class: amber ? 'wbgh-badge amber' : 'wbgh-badge',
+        text: daysLabel(pg.daysLeft)}));
+    }
+    const sumKey = pg.activation ? 'benefitPendingActivate' : 'benefitPending';
+    return el('div', {class: first ? 'wbgh first' : 'wbgh'}, left,
+      el('div', {class: 'wbgh-sum',
+        text: t(sumKey, {n: pg.count, amt: fmtMoney(pg.amount)})}));
+  }
+
+  /**
+   * One wide benefit row (12a): name (full width) | status (amount + word +
+   * optional micro-bar) | per-card chips (✓ = that card fully used, $x =
+   * partial, gray = unused). Same three-state language as the sidebar (G3),
+   * driven by the same finalized group.
+   * @param {!Object} group A finalized benefit group.
+   * @return {!Element} The row.
+   */
+  function renderWideBenefitRow(group) {
+    if (isInactiveBenefit(group)) {
+      const chips = el('div', {class: 'wchips cw-bchips'});
+      for (const e of group.entries) {
+        chips.append(wideChip({token: e.token, tone: 'gray'}));
+      }
+      chips.append(el('div', {class: 'bactivate', text: t('activate'),
+        onclick: () => window.open(
+          'https://global.americanexpress.com/card-benefits/view-all',
+          '_blank')}));
+      return el('div', {class: 'wrow wbenefit'},
+        el('div', {class: 'wbmain'},
+          el('div', {class: 'wb-name', text: group.name}),
+          el('div', {class: 'wb-stat cw-bstat'},
+            el('span', {class: 'wb-inact', text: t('notActivated')})),
+          chips));
+    }
+
+    const done = group.fullyUsed;
+    const pct = group.target > 0 ?
+      Math.min(100, Math.round(group.spent / group.target * 100)) : 0;
+    const partial = !done && group.spent > 0 && group.target > 0;
+
+    const amt = el('div', {class: done ? 'wb-amt done' : 'wb-amt'});
+    amt.append(`${done ? '✓ ' : ''}${fmtMoney(group.spent, group.symbol)} `);
+    amt.append(el('span', {class: 'of',
+      text: `/ ${fmtMoney(group.target, group.symbol)}`}));
+    let word = t('notUsed');
+    let wordCls = 'wb-word';
+    if (done) {
+      word = t('usedUp');
+      wordCls = 'wb-word used';
+    } else if (partial) {
+      word = t('usedPct', {n: pct});
+      wordCls = 'wb-word used';
+    }
+
+    const chips = el('div', {class: 'wchips cw-bchips'});
+    for (const e of group.entries) {
+      const eDone = e.target > 0 && e.spent >= e.target;
+      let tone = 'gray';
+      let suffix = '';
+      if (eDone) {
+        tone = 'green';
+        suffix = '✓';
+      } else if (e.spent > 0) {
+        tone = 'green';
+        suffix = fmtMoney(e.spent, e.symbol);
+      }
+      chips.append(wideChip({token: e.token, tone, suffix}));
+    }
+
+    const main = el('div', {class: 'wbmain'},
+      el('div', {class: 'wb-name', text: group.name}),
+      el('div', {class: 'wb-stat cw-bstat'}, amt,
+        el('span', {class: wordCls, text: word})),
+      chips);
+    const row = el('div',
+      {class: done ? 'wrow wbenefit done' : 'wrow wbenefit'}, main);
+    if (partial) {
+      row.append(el('div', {class: 'wbmicro'},
+        el('div', {style: `width:${pct}%`})));
+    }
+    return row;
+  }
+
   // ---- panel shell / lifecycle ---------------------------------------------
 
   /**
@@ -5373,6 +6645,7 @@
   function makeDraggable(host, listenOn, opts = {}) {
     listenOn.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      if (opts.skip && opts.skip()) return;
       if (opts.only && !e.target.closest(opts.only)) return;
       if (opts.ignore && e.target.closest(opts.ignore)) return;
       const rect = host.getBoundingClientRect();
@@ -5541,8 +6814,10 @@
     root.append(el('style', {text: PANEL_STYLE}));
     root.append(el('div', {class: 'p', id: 'shell'}));
     // Drag the panel by its title row; buttons/tabs keep their own clicks.
-    makeDraggable(host, root,
-      {only: '.hrow', ignore: 'button, .rf, .cl', storeKey: 'panel'});
+    // The wide overlay is a fixed centered box, so dragging is skipped there.
+    makeDraggable(host, root, {only: '.hrow',
+      ignore: 'button, .rf, .cl, .densbtn', storeKey: 'panel',
+      skip: () => currentDensity() === 'wide'});
     return root;
   }
 
@@ -5600,7 +6875,9 @@
     }
     // Restore the saved spot once, after the first render so the panel has a
     // real height to clamp against (later opens keep the in-session position).
-    if (firstCreate) {
+    // Only in the sidebar — the wide overlay owns its (centered) geometry via
+    // applyDensityGeometry and must not be nudged to a saved sidebar spot.
+    if (firstCreate && currentDensity() !== 'wide') {
       const saved = savedPosition('panel');
       if (saved) applyPosition(panelHost, saved);
     }
@@ -5677,5 +6954,6 @@
 
   window.AmexAssistant = {...api, showPanel, openPanel: showPanel};
   initLanguage();
+  initDensity();
   installLauncher();
 })();
