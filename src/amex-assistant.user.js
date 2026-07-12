@@ -4168,7 +4168,8 @@
       title: t('runningTitle'),
       subtitle: t('runningSubtitle', {n: run.total}),
       right: el('div', {class: 'b',
-        style: 'font-size:12px;font-weight:700;font-variant-numeric:tabular-nums',
+        style: 'font-size:12px;font-weight:700;' +
+          'font-variant-numeric:tabular-nums',
         text: t('processedOf',
           {done: run.results.length, total: run.total})})}));
     const body = el('div', {class: 'body'});
