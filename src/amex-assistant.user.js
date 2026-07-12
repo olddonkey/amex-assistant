@@ -3524,14 +3524,6 @@
     .p[data-density="wide"] .ft { padding: 12px 20px; }
     .p[data-density="wide"] .cfrow { padding: 12px 20px 0; }
 
-    /* Header 收窄 pill (the wide counterpart of the sidebar's ⤢ round button). */
-    .densbtn { display: flex; align-items: center; gap: 6px; flex: none;
-      border: 1px solid var(--border-1); border-radius: 8px;
-      corner-shape: var(--se); padding: 6px 11px; font-size: var(--fs-body);
-      font-weight: 700; color: var(--sub); cursor: pointer; background: #fff;
-      transition: background .15s ease; }
-    .densbtn:hover { background: var(--hover-on-white); }
-
     /* Pinned top region (pill / search / chips / column header) on the panel bg. */
     .wtop { flex: none; }
     .wctlrow { display: flex; align-items: center; gap: 12px;
@@ -4074,13 +4066,14 @@
     // The density toggle only appears on the browse views (opts.expand) and
     // only when the window is wide enough to hold the overlay at all.
     if (opts.expand && canGoWide()) {
+      // Same round icon button in both densities (one control, one look);
+      // only the glyph mirrors and the tooltip names the direction.
       const wide = currentDensity() === 'wide';
       const btn = el('button', {
-        class: wide ? 'densbtn' : 'rf dens',
+        class: 'rf dens',
         title: wide ? t('collapseSidebar') : t('expandWide'),
         onclick: () => toggleDensity()});
       btn.innerHTML = wide ? COLLAPSE_SVG : EXPAND_SVG;
-      if (wide) btn.append(document.createTextNode(t('collapseSidebar')));
       row.append(btn);
     }
     if (opts.lang) {
@@ -6888,7 +6881,7 @@
     // Both densities drag by the header; each remembers its own spot so the
     // wide overlay's placement never fights the sidebar's.
     makeDraggable(host, root, {only: '.hrow',
-      ignore: 'button, .rf, .cl, .densbtn',
+      ignore: 'button, .rf, .cl',
       storeKey: () => currentDensity() === 'wide' ? 'panelWide' : 'panel'});
     return root;
   }
