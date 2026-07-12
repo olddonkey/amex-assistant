@@ -207,6 +207,9 @@
       footerSelPrefix: '已选 ',
       footerSelMid: ' 个 · 将',
       footerSelReqs: '并行一次发出 {n} 个请求',
+      // Wide mode reads with more room, so it spells out offer/添加 (9c mock).
+      footerSelMidWide: ' 个 offer · 将',
+      footerSelReqsWide: '并行一次发出 {n} 个添加请求',
       addedToAll: '已添加到 {n} 张卡',
       addableN: '可加 {n}',
       addedN: '已加 {n}',
@@ -397,6 +400,8 @@
       footerSelPrefix: 'Selected ',
       footerSelMid: ' · ',
       footerSelReqs: '{n} requests in parallel, all at once',
+      footerSelMidWide: ' · ',
+      footerSelReqsWide: '{n} add requests in parallel, all at once',
       addedToAll: 'Added to all {n} cards',
       addableN: '{n} eligible',
       addedN: '{n} added',
@@ -2876,7 +2881,7 @@
       --amberbg: #FBF6E8; --amberbd: #F0E3BC; --ambertx: #7A5600;
       font: 13px/1.4 var(--font-ui);
       color: var(--ink); background: var(--panel); border: 1px solid var(--bd);
-      border-radius: 18px; corner-shape: var(--se);
+      border-radius: var(--r-panel); corner-shape: var(--se);
       width: 400px; max-height: 86vh; display: flex;
       flex-direction: column; overflow: hidden; position: relative;
       box-shadow: 0 32px 80px -12px rgba(0,23,90,.2), 0 2px 6px rgba(0,23,90,.05);
@@ -2930,7 +2935,7 @@
       background: var(--chip); color: var(--sub); font-size: 15px;
       cursor: pointer; display: flex; align-items: center;
       justify-content: center; flex: none; transition: background .15s ease; }
-    .rf:hover { background: var(--chip2); }
+    .rf:hover { background: var(--hover-on-btn); }
     .rf.lang { font-size: var(--fs-caption); font-weight: 800; letter-spacing: .2px;
       color: var(--sub2); }
     .cl { width: 30px; height: 30px; border-radius: 50%; margin-right: -4px;
@@ -2938,7 +2943,7 @@
       background: var(--chip); border: none; flex: none; display: flex;
       align-items: center; justify-content: center;
       transition: background .15s ease; }
-    .cl:hover { background: var(--chip2); }
+    .cl:hover { background: var(--hover-on-btn); }
 
     /* ---- body & shared ---- */
     .body { overflow-y: auto; padding-bottom: 6px; }
@@ -2963,10 +2968,10 @@
        here (the per-row "至 MM/DD" already conveys it). */
     .subbar { display: flex; align-items: center; gap: 10px;
       padding: 14px 16px 0; }
-    .subpills { display: flex; background: #E9EBF0; border-radius: 8px;
-      padding: 2px; }
+    .subpills { display: flex; background: var(--surface-seg);
+      border-radius: var(--r-seg); padding: 2px; }
     .subpill { padding: 5px 14px; font-size: var(--fs-body); font-weight: 600;
-      color: var(--sub2); cursor: pointer; border-radius: 6px;
+      color: var(--sub2); cursor: pointer; border-radius: 8px;
       corner-shape: var(--se); font-variant-numeric: tabular-nums; }
     .subpill.on { background: #fff; font-weight: 700; color: var(--navy);
       box-shadow: 0 1px 3px rgba(0,23,90,.12); }
@@ -2975,7 +2980,8 @@
     .sr { position: relative; padding: 12px 16px 0; }
     .sr::before { content: '⌕'; position: absolute; left: 29px; top: 21px;
       font-size: 14px; color: var(--fog); pointer-events: none; }
-    .sr input { width: 100%; border: 1px solid var(--bd2); border-radius: 9px;
+    .sr input { width: 100%; border: 1px solid var(--bd2);
+      border-radius: var(--r-btn);
       corner-shape: var(--se); padding: 9px 13px 9px 32px; font: inherit;
       font-size: var(--fs-amount); color: var(--ink); outline: none; background: #fff;
       box-shadow: inset 0 1px 2px rgba(0,23,90,.03); }
@@ -2988,7 +2994,7 @@
     .cfrow::-webkit-scrollbar { display: none; }
     .cfil { display: flex; align-items: center; gap: 6px; background: #fff;
       border: 1px solid var(--bd); color: var(--ink2); font-size: var(--fs-body);
-      font-weight: 600; border-radius: 15px; padding: 6px 12px;
+      font-weight: 600; border-radius: var(--r-pill); padding: 6px 12px;
       white-space: nowrap; cursor: pointer; flex: none; }
     .cfil.on { background: var(--navy); color: #fff; border-color: var(--navy);
       padding: 6px 13px; }
@@ -3018,8 +3024,8 @@
 
     /* ---- offer list: each group is its own white card ---- */
     .list { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; }
-    .grp { background: #fff; border: 1px solid var(--line); border-radius: 12px;
-      corner-shape: var(--se);
+    .grp { background: #fff; border: 1px solid var(--line);
+      border-radius: var(--r-row); corner-shape: var(--se);
       box-shadow: 0 1px 2px rgba(0,23,90,.04), 0 16px 32px -24px rgba(0,23,90,.18);
       transition: box-shadow .15s ease, border-color .15s ease; }
     .grp:hover { border-color: #DFE3EA;
@@ -3093,7 +3099,7 @@
       font-variant-numeric: tabular-nums; line-height: 1.4; }
     .ft .sm b { color: var(--ink); }
     .go { background: var(--blue); color: #fff; font-size: var(--fs-title); font-weight: 700;
-      letter-spacing: .2px; border: none; border-radius: 9px;
+      letter-spacing: .2px; border: none; border-radius: var(--r-btn);
       corner-shape: var(--se); padding: 11px 24px; cursor: pointer;
       white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,111,207,.5);
       transition: background .15s ease; }
@@ -3103,7 +3109,7 @@
     /* ---- stat tiles (results / running / added) ---- */
     .cnt { display: flex; gap: 8px; padding: 14px 16px 0; }
     .cnt .c { flex: 1; background: #fff; border: 1px solid var(--line);
-      border-radius: 12px; corner-shape: var(--se); padding: 13px 0;
+      border-radius: var(--r-item); corner-shape: var(--se); padding: 13px 0;
       text-align: center; }
     .cnt .c .n { font-size: 20px; font-weight: 800;
       font-variant-numeric: tabular-nums; }
@@ -3128,7 +3134,7 @@
 
     /* ---- grouped result list ---- */
     .reslist { margin: 12px 16px 0; background: #fff; border: 1px solid var(--line);
-      border-radius: 12px; corner-shape: var(--se); overflow: hidden; }
+      border-radius: var(--r-item); corner-shape: var(--se); overflow: hidden; }
     .sh { font-size: 10px; font-weight: 800; color: var(--fog);
       letter-spacing: .7px; padding: 11px 14px 5px; }
     .si { display: flex; justify-content: space-between; gap: 8px;
@@ -3143,7 +3149,7 @@
     /* ---- running rows ---- */
     .rl { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 0; }
     .ri { display: flex; align-items: center; gap: 11px; padding: 11px 14px;
-      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      background: #fff; border: 1px solid var(--line); border-radius: var(--r-item);
       corner-shape: var(--se); font-size: 12px; color: var(--ink); }
     .ri .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
       text-overflow: ellipsis; }
@@ -3167,11 +3173,11 @@
     .msg .txt { font-size: 12px; color: var(--mut); margin-top: 5px;
       line-height: 1.6; }
     .msg .btn { display: inline-flex; align-items: center; gap: 6px;
-      margin-top: 16px; border: 1px solid #E2E5EA; border-radius: 9px;
+      margin-top: 16px; border: 1px solid #E2E5EA; border-radius: var(--r-btn);
       corner-shape: var(--se); padding: 9px 16px; font-size: 12px;
       font-weight: 700; color: var(--blue); cursor: pointer; background: #fff;
       transition: background .15s ease; }
-    .msg .btn:hover { background: #F7F8FA; }
+    .msg .btn:hover { background: var(--hover-on-white); }
     .msg .btn.pri { background: var(--blue); color: #fff; border-color: var(--blue);
       padding: 10px 22px; box-shadow: 0 6px 16px -8px rgba(0,111,207,.5); }
     .msg .btn.pri:hover { background: var(--blue2); }
@@ -3179,7 +3185,8 @@
       margin-top: 16px; }
     .msg .btns .btn { margin-top: 0; }
     .lnk { font-size: 12px; font-weight: 700; color: var(--blue); cursor: pointer; }
-    .lnk.rerun { border: 1px solid #E9C6CC; color: var(--red); border-radius: 9px;
+    .lnk.rerun { border: 1px solid #E9C6CC; color: var(--red);
+      border-radius: var(--r-btn);
       corner-shape: var(--se); padding: 9px 16px; transition: background .15s ease; }
     .lnk.rerun:hover { background: #FCF5F6; }
 
@@ -3206,17 +3213,18 @@
     .trust-langs { display: flex; gap: 10px; justify-content: center;
       margin-top: 14px; }
     .trust-lang { font-size: 12px; font-weight: 700; color: var(--sub2);
-      border: 1px solid #E2E5EA; border-radius: 9px; corner-shape: var(--se);
+      border: 1px solid #E2E5EA; border-radius: var(--r-btn);
+      corner-shape: var(--se);
       padding: 8px 18px; cursor: pointer; min-width: 96px; text-align: center;
       transition: background .15s ease; }
-    .trust-lang:hover { background: #F7F8FA; }
+    .trust-lang:hover { background: var(--hover-on-white); }
     .trust-lang.on { background: var(--blue); color: #fff; border-color: var(--blue); }
 
     /* ---- skeleton (loading rows / confirm backdrop) ---- */
     .skwrap { display: flex; flex-direction: column; gap: 8px;
       padding: 14px 16px 16px; }
     .skrow { display: flex; gap: 11px; align-items: center; padding: 13px 14px;
-      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      background: #fff; border: 1px solid var(--line); border-radius: var(--r-item);
       corner-shape: var(--se); }
     .sklogo { width: 40px; height: 40px; border-radius: 9px; corner-shape: var(--se);
       flex: none; background: #EEF0F3; }
@@ -3231,7 +3239,7 @@
     .cfdim { opacity: .35; pointer-events: none; }
     .cfov { background: rgba(11,31,78,.32); display: flex; align-items: center;
       justify-content: center; padding: 24px; position: relative; }
-    .cfdlg { background: #fff; border-radius: 12px; corner-shape: var(--se);
+    .cfdlg { background: #fff; border-radius: var(--r-item); corner-shape: var(--se);
       width: 100%; box-shadow: 0 24px 64px -12px rgba(0,23,90,.45);
       overflow: hidden; }
     .cf-hd { padding: 18px 20px 0; }
@@ -3259,18 +3267,18 @@
     .cf-btns { display: flex; gap: 10px; padding: 14px 20px 18px;
       justify-content: flex-end; }
     .cf-cancel { border: 1px solid #E2E5EA; color: var(--sub); font-size: var(--fs-amount);
-      font-weight: 600; border-radius: 9px; corner-shape: var(--se);
+      font-weight: 600; border-radius: var(--r-btn); corner-shape: var(--se);
       padding: 9px 18px; cursor: pointer; transition: background .15s ease; }
-    .cf-cancel:hover { background: #F7F8FA; }
+    .cf-cancel:hover { background: var(--hover-on-white); }
     .cf-ok { background: var(--blue); color: #fff; font-size: var(--fs-amount);
-      font-weight: 700; border-radius: 9px; corner-shape: var(--se);
+      font-weight: 700; border-radius: var(--r-btn); corner-shape: var(--se);
       padding: 9px 18px; cursor: pointer; transition: background .15s ease; }
     .cf-ok:hover { background: var(--blue2); }
 
     /* ---- Benefits tab ---- */
     .bstats { display: flex; gap: 8px; padding: 12px 16px 0; }
     .bstats .c { flex: 1; background: #fff; border: 1px solid var(--line);
-      border-radius: 12px; corner-shape: var(--se); padding: 11px 0;
+      border-radius: var(--r-item); corner-shape: var(--se); padding: 11px 0;
       text-align: center; }
     .bval { font-size: var(--fs-stat); font-weight: 800;
       font-variant-numeric: tabular-nums; }
@@ -3331,7 +3339,7 @@
     .bgrp.part .brow { padding-bottom: 0; }
     .binact { font-size: var(--fs-sub); font-weight: 700; color: var(--amber);
       flex: none; }
-    .bactivate { border: 1px solid var(--border-1); border-radius: 9px;
+    .bactivate { border: 1px solid var(--border-1); border-radius: var(--r-btn);
       corner-shape: var(--se); padding: 6px 11px; font-size: var(--fs-sub);
       font-weight: 700; color: var(--blue); cursor: pointer; white-space: nowrap;
       flex: none; transition: background .15s ease; }
@@ -3355,7 +3363,7 @@
     .buntrack-wrap { display: flex; flex-direction: column; gap: 8px;
       padding: 14px 16px 0; }
     .buntrack { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      background: #fff; border: 1px solid var(--line); border-radius: var(--r-item);
       corner-shape: var(--se); cursor: pointer; opacity: .8; }
     .buntrack-t { font-size: var(--fs-body); font-weight: 600; color: var(--sub);
       white-space: nowrap; }
@@ -3377,8 +3385,8 @@
       border-top: 1px solid var(--bd); }
 
     /* ---- added (redeem-tracking) sub-view ---- */
-    .agrp { background: #fff; border: 1px solid var(--line); border-radius: 12px;
-      corner-shape: var(--se);
+    .agrp { background: #fff; border: 1px solid var(--line);
+      border-radius: var(--r-row); corner-shape: var(--se);
       box-shadow: 0 1px 2px rgba(0,23,90,.04), 0 16px 32px -24px rgba(0,23,90,.18); }
     .agrp.dim { opacity: .6; box-shadow: none; }
     .addedlist { display: flex; flex-direction: column; gap: 8px;
@@ -3420,7 +3428,7 @@
     .adropitem { display: flex; align-items: center;
       justify-content: space-between; padding: 7px 11px; font-size: var(--fs-body);
       color: var(--sub); border-radius: 7px; corner-shape: var(--se);
-      cursor: pointer; }
+      cursor: pointer; transition: background .15s ease; }
     .adropitem:hover { background: var(--panel); }
     .adropitem.on { font-weight: 700; color: var(--navy); background: #F0F4FA; }
     .adropitem .ck { color: var(--amex-blue); }
@@ -3438,7 +3446,7 @@
 
     /* ---- added view: 按卡 card group (mock state C) ---- */
     .acardgrp { background: #fff; border: 1px solid var(--line);
-      border-radius: 14px; corner-shape: var(--se);
+      border-radius: var(--r-row); corner-shape: var(--se);
       box-shadow: var(--shadow-card); overflow: hidden; }
     .acardhd { display: flex; align-items: center; gap: 10px; padding: 11px 14px;
       border-bottom: 1px solid var(--border-inner); }
@@ -3476,7 +3484,7 @@
       font-variant-numeric: tabular-nums; }
     .acardmore { padding: 8px 14px; border-top: 1px solid var(--border-inner);
       font-size: var(--fs-sub); font-weight: 600; color: var(--amex-blue);
-      cursor: pointer; text-align: center; }
+      cursor: pointer; text-align: center; transition: background .15s ease; }
     .acardmore:hover { background: var(--hover-on-white); }
 
     /* ===== Wide mode (G4): the second density, a centered ≈880px overlay =====
@@ -3516,7 +3524,7 @@
       padding: 14px 20px 0; }
     .wsearch { flex: 1; min-width: 0; display: flex; align-items: center;
       gap: 8px; background: #fff; border: 1px solid var(--bd2);
-      border-radius: 9px; corner-shape: var(--se); padding: 8px 13px;
+      border-radius: var(--r-btn); corner-shape: var(--se); padding: 8px 13px;
       box-shadow: var(--shadow-input); }
     .wsearch .wsi { color: var(--fog); font-size: 14px; line-height: 1;
       flex: none; }
@@ -3639,7 +3647,7 @@
       line-height: 1.5; }
     .wfoot .txt b { color: var(--amber); font-weight: 700; }
     .wbtn { border: 1px solid var(--border-1); background: #fff;
-      border-radius: 9px; corner-shape: var(--se); padding: 8px 16px;
+      border-radius: var(--r-btn); corner-shape: var(--se); padding: 8px 16px;
       font-size: var(--fs-amount); font-weight: 700; color: var(--amex-blue);
       cursor: pointer; white-space: nowrap; flex: none;
       transition: background .15s ease; }
@@ -3844,7 +3852,7 @@
     const n = (s) => states.filter((x) => x === s).length;
     const badge = el('div', {class: 'runbadge'});
     badge.append(el('span', {class: 'g', text: `✓${n(ResultState.VERIFIED)}`}),
-      el('span', {class: 'am', text: `⚠${n(ResultState.GHOST)}`}),
+      el('span', {class: 'am', text: `?${n(ResultState.GHOST)}`}),
       el('span', {class: 'r', text: `✗${n(ResultState.FAILED)}`}));
     return badge;
   }
@@ -3887,7 +3895,7 @@
       if (card.enrolled) {
         label.append(el('span', {class: 'mk en', text: t('addedMark')}));
       } else if (result) {
-        const mk = {[ResultState.FAILED]: '✗', [ResultState.GHOST]: '⚠',
+        const mk = {[ResultState.FAILED]: '✗', [ResultState.GHOST]: '?',
           [ResultState.UNVERIFIED]: '?', [ResultState.VERIFIED]: '✓',
           [ResultState.SKIPPED]: '⊘'};
         label.append(el('span', {class: `mk r-${result.state}`,
@@ -4855,10 +4863,12 @@
     // The request count is the flattened, already-enrolled-skipping task set —
     // the same number the confirm dialog and the run will fire in parallel.
     const reqs = buildTasks().length;
+    const wide = currentDensity() === 'wide';
     sm.append(document.createTextNode(t('footerSelPrefix')),
       el('b', {text: String(offers)}),
-      document.createTextNode(t('footerSelMid')),
-      el('b', {text: t('footerSelReqs', {n: reqs})}));
+      document.createTextNode(t(wide ? 'footerSelMidWide' : 'footerSelMid')),
+      el('b', {text: t(wide ? 'footerSelReqsWide' : 'footerSelReqs',
+        {n: reqs})}));
     go.disabled = reqs === 0;
   }
 
@@ -5461,7 +5471,7 @@
     section(t('secSkipped'),
       (r) => r.state === ResultState.SKIPPED, '⊘', 'am');
     section(t('secGhost'),
-      (r) => r.state === ResultState.GHOST, '⚠', 'am');
+      (r) => r.state === ResultState.GHOST, '?', 'am');
     section(t('secUnverified'),
       (r) => r.state === ResultState.UNVERIFIED, '?', 'note');
     if (reslist.children.length) body.append(reslist);
