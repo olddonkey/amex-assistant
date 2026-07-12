@@ -300,7 +300,6 @@
       benefitsReadFailed: '读取失败',
       searchBenefits: '搜索 benefit 或卡',
       sortByExpiry: '按到期时间排序 ',
-      benefitsFootnote: '进度按报表返现记录自动归类 · 纯只读，不在本地存任何数据',
       noBenefitsMatch: '没有匹配「{q}」的 benefit',
       noBenefits: '这些卡上没有可追踪的 benefit',
       leftThisMonth: '本月还没用的',
@@ -502,8 +501,6 @@
       benefitsReadFailed: 'Read failed',
       searchBenefits: 'Search benefits or cards',
       sortByExpiry: 'Sorted by expiry ',
-      benefitsFootnote: 'Amounts come from Amex benefit trackers · ' +
-          'read-only, nothing stored locally',
       noBenefitsMatch: 'No benefits match "{q}"',
       noBenefits: 'No trackable benefits on these cards',
       leftThisMonth: 'Left this month',
@@ -5058,9 +5055,6 @@
     body.append(el('div', {id: 'bbody'}));
     shell.append(body);
     renderBenefitBody(body);
-
-    shell.append(el('div', {class: 'bfoot'},
-      el('div', {class: 'note', text: t('benefitsFootnote')})));
   }
 
   /**
@@ -6558,8 +6552,6 @@
     shell.append(top);
     shell.append(el('div', {class: 'wscroll', id: 'wscroll'}));
     fillWideBenefitRows(shell);
-    shell.append(el('div', {class: 'bfoot'},
-      el('div', {class: 'note', text: t('benefitsFootnote')})));
   }
 
   /** @param {!Element} shell Panel content root. */
