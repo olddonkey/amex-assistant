@@ -193,17 +193,20 @@
       listSubtitle: '{offers} 个 offer · {cards} 张卡',
       searchOffers: '搜索商家或 offer',
       allCards: '全部卡',
-      multiOnly: '只看多卡可加',
+      multiOnly: '只看多卡',
       selectAllAddable: '全选可加',
       clearSelection: '清空',
+      listHeadAddable: '{n} 个可加 OFFER',
+      listHeadSelected: '已选 {n} 个 OFFER',
       cardsReadFailed: '{n} 张卡读取失败。',
       cardsReadFailedNote:
           '{names} 的 offer 本次未能读取，列表暂不含这些卡；点右上角 ↻ 重试。',
       noMatchingOffers: '没有匹配的 offer',
       addToSelected: '加到所选卡',
+      footerIdle: '勾选 offer 后从这里并行提交',
       footerSelPrefix: '已选 ',
-      footerSelMid: ' 个 offer，将尝试添加到 ',
-      footerSelSuffix: ' 张卡',
+      footerSelMid: ' 个 · 将',
+      footerSelReqs: '并行一次发出 {n} 个请求',
       addedToAll: '已添加到 {n} 张卡',
       addableN: '可加 {n}',
       addedN: '已加 {n}',
@@ -313,7 +316,6 @@
       // Added (redeem-tracking) sub-view
       subAddable: '可加',
       subAdded: '已加',
-      sortShortExpiry: '按到期',
       statRedeemed: '已返现',
       statPending: '待消费',
       statExpiring: '7 天内过期',
@@ -352,14 +354,17 @@
       multiOnly: 'Multi-card only',
       selectAllAddable: 'Select all eligible',
       clearSelection: 'Clear',
+      listHeadAddable: '{n} eligible OFFERS',
+      listHeadSelected: '{n} OFFERS selected',
       cardsReadFailed: '{n} card(s) could not be read.',
       cardsReadFailedNote: 'Offers on {names} could not be read this time ' +
           'and are not listed; click ↻ (top right) to retry.',
       noMatchingOffers: 'No matching offers',
       addToSelected: 'Add to selected cards',
+      footerIdle: 'Check offers, then submit them here in parallel',
       footerSelPrefix: 'Selected ',
-      footerSelMid: ' offer(s) · will try adding to ',
-      footerSelSuffix: ' card(s)',
+      footerSelMid: ' · ',
+      footerSelReqs: '{n} requests in parallel, all at once',
       addedToAll: 'Added to all {n} cards',
       addableN: '{n} eligible',
       addedN: '{n} added',
@@ -479,7 +484,6 @@
       // Added (redeem-tracking) sub-view
       subAddable: 'Addable',
       subAdded: 'Added',
-      sortShortExpiry: 'By expiry',
       statRedeemed: 'Cashback posted',
       statPending: 'To spend',
       statExpiring: 'Expiring in 7 days',
@@ -2515,7 +2519,9 @@
     .lastrun .sp { flex: 1; }
     .lastrun b { font-weight: 700; }
 
-    /* ---- sub-tab pills (可加 / 已加) + sort ---- */
+    /* ---- sub-tab pills (可加 / 已加) ---- */
+    /* Expiry-ascending is the fixed default order, so no sort control lives
+       here (the per-row "至 MM/DD" already conveys it). */
     .subbar { display: flex; align-items: center; gap: 10px;
       padding: 14px 16px 0; }
     .subpills { display: flex; background: #E9EBF0; border-radius: 8px;
@@ -2525,9 +2531,6 @@
       corner-shape: var(--se); font-variant-numeric: tabular-nums; }
     .subpill.on { background: #fff; font-weight: 700; color: var(--navy);
       box-shadow: 0 1px 3px rgba(0,23,90,.12); }
-    .subbar .sp { flex: 1; }
-    .sortsel { font-size: var(--fs-body); color: var(--sub2); cursor: pointer;
-      white-space: nowrap; }
 
     /* ---- search ---- */
     .sr { position: relative; padding: 12px 16px 0; }
@@ -2540,30 +2543,39 @@
     .sr input::placeholder { color: var(--fog); }
     .sr input:focus { border-color: var(--blue); }
 
-    /* ---- card filter chips ---- */
+    /* ---- card filter chips (+ trailing dashed condition filter) ---- */
     .cfrow { display: flex; gap: 6px; padding: 12px 16px 0; overflow-x: auto;
       scrollbar-width: none; -ms-overflow-style: none; }
     .cfrow::-webkit-scrollbar { display: none; }
     .cfil { display: flex; align-items: center; gap: 6px; background: #fff;
       border: 1px solid var(--bd); color: var(--ink2); font-size: var(--fs-body);
       font-weight: 600; border-radius: 15px; padding: 6px 12px;
-      white-space: nowrap; cursor: pointer; }
+      white-space: nowrap; cursor: pointer; flex: none; }
     .cfil.on { background: var(--navy); color: #fff; border-color: var(--navy);
       padding: 6px 13px; }
+    /* 1px divider between card filters (which card) and condition filters. */
+    .cfdiv { width: 1px; background: var(--border-1); flex: none;
+      margin: 4px 1px; }
+    /* Condition filter (只看多卡): dashed border marks it apart from the solid
+       card chips; active reads navy (a filter/view state, not an action). */
+    .cfil.dash { border-style: dashed; border-color: var(--text-disabled);
+      color: var(--sub); }
+    .cfil.dash.on { color: var(--navy); border-color: var(--navy);
+      background: rgba(11,31,78,.06); font-weight: 700; }
+    .cfico { display: flex; flex: none; }
     .cfsw { width: 16px; height: 11px; border-radius: 2px; flex: none;
       overflow: hidden; background: linear-gradient(135deg,#dfe2e6,#b3b9c1); }
     .cfsw img { width: 100%; height: 100%; object-fit: cover; }
 
-    /* ---- select toolbar (只看多卡可加) ---- */
-    .tb { display: flex; align-items: center; padding: 12px 20px 8px;
-      font-size: var(--fs-body); }
-    .tb label { display: flex; align-items: center; gap: 6px; color: var(--sub);
-      cursor: pointer; }
-    .tb .sp { flex: 1; }
-    .tb .ac { display: flex; gap: 14px; font-weight: 700; }
-    .tb .ac a { cursor: pointer; }
-    .a-blue { color: var(--blue); }
-    .a-mut { color: var(--fog); }
+    /* ---- list header: count + select-all / clear (two states) ---- */
+    .lh { display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px 0; }
+    .lh-l { font-size: var(--fs-sub); font-weight: 600; color: var(--text-4);
+      letter-spacing: .2px; font-variant-numeric: tabular-nums; }
+    .lh-l.sel { font-weight: 700; color: var(--navy); }
+    .lh-a { font-size: var(--fs-body); font-weight: 700; color: var(--amex-blue);
+      cursor: pointer; white-space: nowrap; }
+    .lh-a.mut { font-weight: 600; color: var(--text-4); }
 
     /* ---- offer list: each group is its own white card ---- */
     .list { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; }
@@ -2629,16 +2641,17 @@
     input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--blue);
       flex: none; }
     .ccard input[type=checkbox] { width: 14px; height: 14px; }
-    .tb input[type=checkbox] { width: 13px; height: 13px; }
 
-    /* ---- footer: an elevated action bar that reads as separate from the
-       scrolling list above it ---- */
+    /* ---- footer action bar (two states): a flat white strip with a hairline
+       top border that bookends the white header across the grey list ---- */
     .ft { padding: 12px 16px 14px; display: flex; align-items: center;
-      gap: 12px; flex: none; background: var(--panel);
-      border-top: 1px solid var(--bd);
-      box-shadow: 0 -8px 18px -12px rgba(0,23,90,.14); }
-    .ft .sm { flex: 1; font-size: 12px; color: var(--sub);
-      font-variant-numeric: tabular-nums; }
+      gap: 12px; flex: none; background: var(--surface-card);
+      border-top: 1px solid var(--border-hairline); }
+    /* Idle (nothing selected): a centered grey hint, no button. */
+    .ft.idle { justify-content: center; padding: 11px 16px; }
+    .ft.idle .sm { flex: none; text-align: center; color: var(--text-5); }
+    .ft .sm { flex: 1; font-size: var(--fs-body); color: var(--sub);
+      font-variant-numeric: tabular-nums; line-height: 1.4; }
     .ft .sm b { color: var(--ink); }
     .go { background: var(--blue); color: #fff; font-size: var(--fs-title); font-weight: 700;
       letter-spacing: .2px; border: none; border-radius: 9px;
@@ -2986,13 +2999,6 @@
     });
   }
 
-  /** @return {number} Total selected (offer, card) pairs. */
-  function selectedCount() {
-    let n = 0;
-    for (const set of state.selected.values()) n += set.size;
-    return n;
-  }
-
   // ---- rendering -----------------------------------------------------------
 
   /** @param {!OfferGroup} group Group. @return {!DocumentFragment} Row. */
@@ -3157,6 +3163,17 @@
       'stroke-linejoin="round" style="display:block">' +
       '<path d="M21 12a9 9 0 1 1-2.64-6.36"></path>' +
       '<polyline points="21 3 21 9 15 9"></polyline></svg>';
+
+  /**
+   * The "multi-card only" condition-filter glyph: two overlapping rounded
+   * rectangles, inheriting the chip's text color via `currentColor`.
+   * @const {string}
+   */
+  const MULTICARD_SVG =
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" style="display:block">' +
+      '<rect x="3" y="3" width="12" height="9" rx="2"></rect>' +
+      '<rect x="9" y="12" width="12" height="9" rx="2"></rect></svg>';
 
   /**
    * The brand icon: a two-card stack with a "+" badge on the Amex blue. Used by
@@ -3407,23 +3424,24 @@
           String(card.token).slice(-4);
       addChip(card.token, `…${digits}`, card.token);
     }
+    // Condition filter "只看多卡": a dashed chip after a 1px divider, set apart
+    // from the solid card-filter chips (which card vs. a filter condition).
+    cfrow.append(el('div', {class: 'cfdiv'}));
+    const multiChip = el('div',
+      {class: state.multiOnly ? 'cfil dash on' : 'cfil dash'});
+    const mico = el('span', {class: 'cfico'});
+    mico.innerHTML = MULTICARD_SVG;
+    multiChip.append(mico, document.createTextNode(t('multiOnly')));
+    multiChip.onclick = () => {
+      state.multiOnly = !state.multiOnly;
+      render();
+    };
+    cfrow.append(multiChip);
     body.append(cfrow);
 
-    const tb = el('div', {class: 'tb'});
-    const multi = el('input', {type: 'checkbox'});
-    multi.checked = state.multiOnly;
-    multi.onchange = () => {
-      state.multiOnly = multi.checked;
-      renderRows(body);
-    };
-    tb.append(el('label', {}, multi, t('multiOnly')),
-      el('div', {class: 'sp'}),
-      el('div', {class: 'ac'},
-        el('a', {class: 'a-blue', text: t('selectAllAddable'),
-          onclick: () => selectAllVisible(body)}),
-        el('a', {class: 'a-mut', text: t('clearSelection'),
-          onclick: () => clearSelection(body)})));
-    body.append(tb);
+    // List header: addable count + 全选可加 when nothing is selected; flips to
+    // 已选 N 个 + 清空 once a selection exists. refreshListHead keeps it live.
+    body.append(el('div', {class: 'lh', id: 'lh'}));
 
     const list = el('div', {class: 'list', id: 'list'});
     body.append(list);
@@ -3431,12 +3449,13 @@
     renderRows(body);
 
     shell.append(renderFooter());
-    // renderRows() ran before the footer was in the DOM; sync the summary now
-    // so a returning selection is reflected without needing an interaction.
+    // renderRows() ran before the footer/header were in the DOM; sync the
+    // summary + list header now so a returning selection is reflected without
+    // needing an interaction.
     refreshFooter();
   }
 
-  /** @return {!Element} The 可加 | 已加 segmented pill control + sort. */
+  /** @return {!Element} The 可加 | 已加 segmented pill control. */
   function renderOffersSubTabs() {
     const addableN =
         state.offers.filter((g) => addableCards(g).length > 0).length;
@@ -3456,9 +3475,7 @@
     return el('div', {class: 'subbar'},
       el('div', {class: 'subpills'},
         mk('addable', t('subAddable'), addableN),
-        mk('added', t('subAdded'), addedN)),
-      el('div', {class: 'sp'}),
-      el('div', {class: 'sortsel', text: `${t('sortShortExpiry')} ▾`}));
+        mk('added', t('subAdded'), addedN)));
   }
 
   /**
@@ -3790,24 +3807,75 @@
     const sm = el('div', {class: 'sm', id: 'sm'});
     const go = el('button', {class: 'go', id: 'go', text: t('addToSelected'),
       onclick: () => runSelected()});
-    return el('div', {class: 'ft'}, sm, go);
+    return el('div', {class: 'ft', id: 'ft'}, sm, go);
   }
 
-  /** Updates the footer summary + button enabled state. */
+  /**
+   * Updates the footer's two states: idle (nothing selected) shows a grey
+   * hint and hides the button; selected shows the parallel-submit summary +
+   * the primary button. Also refreshes the list header (same selection state).
+   */
   function refreshFooter() {
     if (!panelRoot) return;
+    refreshListHead();
+    const ft = panelRoot.getElementById('ft');
     const sm = panelRoot.getElementById('sm');
     const go = panelRoot.getElementById('go');
-    if (!sm || !go) return;
+    if (!ft || !sm || !go) return;
     const offers = state.selected.size;
-    const pairs = selectedCount();
     sm.textContent = '';
+    if (offers === 0) {
+      ft.classList.add('idle');
+      go.style.display = 'none';
+      sm.textContent = t('footerIdle');
+      return;
+    }
+    ft.classList.remove('idle');
+    go.style.display = '';
+    // The request count is the flattened, already-enrolled-skipping task set —
+    // the same number the confirm dialog and the run will fire in parallel.
+    const reqs = buildTasks().length;
     sm.append(document.createTextNode(t('footerSelPrefix')),
       el('b', {text: String(offers)}),
       document.createTextNode(t('footerSelMid')),
-      el('b', {text: String(pairs)}),
-      document.createTextNode(t('footerSelSuffix')));
-    go.disabled = pairs === 0;
+      el('b', {text: t('footerSelReqs', {n: reqs})}));
+    go.disabled = reqs === 0;
+  }
+
+  /**
+   * Updates the list header in place: `N 个可加 OFFER ｜ 全选可加` while nothing
+   * is selected, flipping to `已选 N 个 OFFER ｜ 清空` once a selection exists.
+   * Double-blue: the select-all link is action bright-blue; the selected-count
+   * label is view-state navy. No dead control — 全选可加 is hidden when there is
+   * nothing addable to select.
+   */
+  function refreshListHead() {
+    if (!panelRoot) return;
+    const lh = panelRoot.getElementById('lh');
+    if (!lh) return;
+    lh.textContent = '';
+    const body = panelRoot.querySelector('.body');
+    const selCount = state.selected.size;
+    const label = el('div', {class: 'lh-l'});
+    const action = el('div', {class: 'lh-a'});
+    if (selCount > 0) {
+      label.classList.add('sel');
+      label.textContent = t('listHeadSelected', {n: selCount});
+      action.classList.add('mut');
+      action.textContent = t('clearSelection');
+      action.onclick = () => clearSelection(body);
+      lh.append(label, action);
+      return;
+    }
+    const addable =
+        visibleOffers().filter((g) => addableCards(g).length > 0).length;
+    label.textContent = t('listHeadAddable', {n: addable});
+    lh.append(label);
+    if (addable > 0) {
+      action.textContent = t('selectAllAddable');
+      action.onclick = () => selectAllVisible(body);
+      lh.append(action);
+    }
   }
 
   // ---- Benefits tab (3a) ---------------------------------------------------
