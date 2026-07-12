@@ -24,7 +24,7 @@
 
 1. **不改网络层与执行时序**。本轮是纯 UI/展示层改造：`snapshot / buildOfferIndex / executeSelected / planRetry / fetchAllBenefits / fetchRedeemedOffers` 等数据与执行函数的行为、并发策略、重试与熔断逻辑一律不动（新增纯函数可以）。同一 offer 多卡并发、offer 间隔离等策略保持现状。
 2. **不加任何第三方请求**。设计稿字体是 Public Sans，但 **prod 严禁引入 Google Fonts `@import`/`<link>`**（零上报红线）。字体栈更新为 `'Public Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif`——用户装了 Public Sans 就用，没装回退系统字体。
-3. **执行文案硬约束**（设计系统规定）：所有执行相关文案必须体现「**并行一次发出**」，严禁出现「串行」「随机延迟」「排队等待」字样。注意：这是**文案层**约束，不等于改网络时序（时序见红线 1）。
+3. **执行文案硬约束**（设计系统规定）：所有执行相关文案必须体现「**并行一次发出**」，严禁出现「串行」「随机延迟」「排队等待」字样。注意：这是**文案层**约束，不等于改网络时序（时序见红线 1）。**（v1.3 校准：改为"不描述串行机制、同 offer 表述为同时提交、不夸大全并发"，见 design/v2/落地修订-v1.2.md §8）**
 4. **禁止死控件**：可点的必有响应。mock 里出现的每个控件都要么可交互、要么不实现，不允许摆一个点了没反应的（现状的静态「按到期 ▾」标签就是本轮要删的死控件）。
 5. **i18n 完整性**：所有新增用户可见字符串进 `MESSAGES.zh/en`，key 双语对齐（`test/i18n.test.mjs` 强制）。
 6. **单文件 + Shadow DOM + 无框架** 不变；`node --check` + `npm test` 每个 PR 必须全绿。
