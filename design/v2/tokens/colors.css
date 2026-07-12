@@ -1,0 +1,62 @@
+:root {
+  /* 品牌蓝 — 双蓝规则:藏青 = 过滤器/视图状态;亮蓝 = 动作与提交性选择 */
+  --amex-blue: #006FCF;        /* 动作、主按钮、链接、tab 下划线、提交性选中 */
+  --amex-blue-hover: #0264BE;
+  --amex-blue-tint: rgba(0,111,207,.08); /* 可加 badge 底 */
+  --amex-blue-text: #0A6ACB;   /* badge 文字 */
+  --navy: #0B1F4E;             /* 过滤器选中、pill 选中文字、标题 */
+  --navy-deep: #00175A;        /* logo 深色 */
+  --selected-border: #9EC4E8;  /* 选中行描边 */
+
+  /* 语义色 */
+  --green: #0B7A3E;      --green-tint: #EAF3EC;  --green-border: #D8E9DD;
+  --green-row: #F7FAF8;  --green-row-border: #E2EDE5; /* 已用完归档行 */
+  --red: #C8102E;        --red-tint: #FBEAEA;    --red-border: #F0D5D2;
+  --amber: #9A6A00;      --amber-tint: #FBF3E0;  --amber-border: #EFE2BD;
+
+  /* 中性文字(深→浅) */
+  --ink: #1A1E28;
+  --text-2: #5A5F6A;
+  --text-3: #6A6F7A;
+  --text-4: #8A8F99;
+  --text-5: #9CA1AB;
+  --text-disabled: #C9CCD0;
+
+  /* 表面 */
+  --surface-page: #F5F6F8;     /* 面板底 */
+  --surface-card: #FFFFFF;
+  --surface-sunken: #FAFBFC;   /* 展开区底 */
+  --surface-btn: #F2F4F7;      /* 圆形图标按钮底 */
+  --surface-seg: #E9EBEF;      /* 分段 pill 容器底 */
+  --surface-count: #EEF0F3;    /* 计数胶囊底 */
+
+  /* 描边(深→浅) */
+  --border-1: #E2E5EA;
+  --border-2: #E7E9EE;
+  --border-3: #E9EAEE;
+  --border-card: #ECEEF2;
+  --border-hairline: #EEF0F3;
+  --border-inner: #F0F2F5;
+  --border-row: #F4F5F7;
+  --track: #E7EAEF;            /* 进度条轨道 */
+
+  /* 卡面 */
+  --card-silver: linear-gradient(135deg, #dfe2e6, #b3b9c1);
+  --card-gold: linear-gradient(135deg, #e9cd85, #c29a45);
+
+  /* 归档行(已用完)专用文字 */
+  --archived-text: #5A6B60;
+  --archived-sub: #93A29A;
+
+  /* 交互态 */
+  --hover-on-white: #F7F8FA;   /* 白卡上的 hover 底 */
+  --hover-on-btn: #E7EAEF;     /* 圆形图标按钮 hover */
+  --border-expanded: #D8DDE5;  /* 展开态行卡描边 */
+  --spinner-track: #D9E8F8;    /* 加载环轨道(蓝调) */
+
+  /* 语义别名 */
+  --text-body: var(--ink);
+  --text-muted: var(--text-4);
+  --action: var(--amex-blue);
+  --filter-active: var(--navy);
+}

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;padding:32px;background:#f0eee9;font-family:'Public Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.6);margin:8px 0}
+.dv-opt{display:flex;flex-direction:column;gap:12px}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.cap{font:600 11px system-ui,sans-serif;color:rgba(0,0,0,.45);margin:0 0 8px}</style>
+</head><body>
+<div class="dv-opt" id="7a">
+  <div class="dv-olabel"><a class="dv-oid" href="#7a">7a</a>现行流程屏：启动 → 首次使用 → 读取 → 确认 → 执行 → 结果 → 空态/错误(可加/已加/Benefits 已移至新稿,见下注)</div>
+  <div style="display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap;font-family:'Public Sans',system-ui,sans-serif">
+
+    <!-- ① 启动 -->
+    <div>
+      <p class="cap">① 悬浮启动按钮（贴右缘）</p>
+      <div style="width:190px;border-radius:16px;background:#e8e9eb;padding:28px 0 28px 28px;display:flex;justify-content:flex-end;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E9EAEE;border-right:none;border-radius:12px 0 0 12px;corner-shape:superellipse(1.6);padding:11px 18px 11px 13px;box-shadow:0 8px 24px -8px rgba(0,23,90,.25);cursor:pointer">
+          <svg width="24" height="24" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+          <span style="font-size:13px;font-weight:800;color:#0B1F4E;letter-spacing:-.1px;line-height:1">Amex 助手</span>
+        </div>
+      </div>
+      <p class="cap" style="margin-top:14px">①b 执行中收起时 — 按钮带进度</p>
+      <div style="width:190px;border-radius:16px;background:#e8e9eb;padding:28px 0 28px 28px;display:flex;justify-content:flex-end;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E9EAEE;border-right:none;border-radius:12px 0 0 12px;corner-shape:superellipse(1.6);padding:11px 18px 11px 13px;box-shadow:0 8px 24px -8px rgba(0,23,90,.25);cursor:pointer">
+          <div style="width:18px;height:18px;border-radius:50%;border:2.5px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;flex-shrink:0"></div>
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#0B1F4E;letter-spacing:-.1px;line-height:1.1">提交中</div>
+            <div style="font-size:10px;font-weight:700;color:#006FCF;margin-top:2px;font-variant-numeric:tabular-nums;line-height:1">6 / 9</div>
+          </div>
+        </div>
+      </div>
+      <p class="cap" style="margin-top:14px">①c 执行完成（收起时）— 点击打开结果页</p>
+      <div style="width:190px;border-radius:16px;background:#e8e9eb;padding:28px 0 28px 28px;display:flex;justify-content:flex-end;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E9EAEE;border-right:none;border-radius:12px 0 0 12px;corner-shape:superellipse(1.6);padding:11px 18px 11px 13px;box-shadow:0 8px 24px -8px rgba(0,23,90,.25);cursor:pointer">
+          <div style="width:18px;height:18px;border-radius:50%;background:#EAF3EC;color:#0B7A3E;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</div>
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#0B1F4E;letter-spacing:-.1px;line-height:1.1">已完成</div>
+            <div style="font-size:10px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums;line-height:1"><span style="color:#0B7A3E">6</span><span style="color:#C9CCD0"> · </span><span style="color:#C8102E">1</span><span style="color:#C9CCD0"> · </span><span style="color:#9A6A00">2</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap" style="margin-top:14px">①d 全部成功时 — 绿点即可，不打扰</p>
+      <div style="width:190px;border-radius:16px;background:#e8e9eb;padding:28px 0 28px 28px;display:flex;justify-content:flex-end;overflow:hidden">
+        <div style="position:relative;display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #E9EAEE;border-right:none;border-radius:12px 0 0 12px;corner-shape:superellipse(1.6);padding:11px 18px 11px 13px;box-shadow:0 8px 24px -8px rgba(0,23,90,.25);cursor:pointer">
+          <svg width="24" height="24" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+          <span style="font-size:13px;font-weight:800;color:#0B1F4E;letter-spacing:-.1px;line-height:1">Amex 助手</span>
+          <span style="position:absolute;top:7px;right:9px;width:8px;height:8px;border-radius:50%;background:#0B7A3E;box-shadow:0 0 0 2px #fff"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② 首次使用 -->
+    <div>
+      <p class="cap">② 首次使用 — 信任屏</p>
+      <div style="width:400px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+        <div style="background:#fff;padding:16px 20px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EEF0F3">
+          <svg width="34" height="34" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+          <div style="flex:1;font-size:15px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">Amex 助手</div>
+          <div style="width:30px;height:30px;border-radius:50%;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:15px;color:#5A5F6A;cursor:pointer;line-height:1;transition:background .15s ease" style-hover="background:#E7EAEF">×</div>
+        </div>
+        <div style="background:#fff;padding:22px 24px 22px">
+          <div style="font-size:17px;font-weight:800;color:#0B1F4E;letter-spacing:-.3px;line-height:1.4">把一个 offer，<br />加到你的每张卡</div>
+          <div style="font-size:12px;color:#6A6F7A;line-height:1.7;margin-top:8px">在 Amex 网页上 Add to Card 之后，其它卡就看不到这个 offer 了。Amex 助手把你选的 offer 同时加到多张卡，并逐卡确认结果。</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:18px">
+            <div style="display:flex;gap:11px;align-items:center;background:#FAFBFC;border:1px solid #F0F2F5;border-radius:8px;corner-shape:superellipse(1.6);padding:10px 13px">
+              <div style="width:26px;height:26px;border-radius:6px;corner-shape:superellipse(1.6);background:rgba(0,111,207,.08);color:#0A6ACB;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</div>
+              <div style="font-size:12px;color:#5A5F6A;line-height:1.5"><b style="color:#1A1E28">纯本地运行</b> — 零后端、零上报，代码可审计</div>
+            </div>
+            <div style="display:flex;gap:11px;align-items:center;background:#FAFBFC;border:1px solid #F0F2F5;border-radius:8px;corner-shape:superellipse(1.6);padding:10px 13px">
+              <div style="width:26px;height:26px;border-radius:6px;corner-shape:superellipse(1.6);background:rgba(0,111,207,.08);color:#0A6ACB;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</div>
+              <div style="font-size:12px;color:#5A5F6A;line-height:1.5"><b style="color:#1A1E28">先只读</b> — 打开只读取 Offer 列表，不改动账户</div>
+            </div>
+            <div style="display:flex;gap:11px;align-items:center;background:#FAFBFC;border:1px solid #F0F2F5;border-radius:8px;corner-shape:superellipse(1.6);padding:10px 13px">
+              <div style="width:26px;height:26px;border-radius:6px;corner-shape:superellipse(1.6);background:rgba(0,111,207,.08);color:#0A6ACB;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">✓</div>
+              <div style="font-size:12px;color:#5A5F6A;line-height:1.5"><b style="color:#1A1E28">你说了算</b> — 勾选并确认后才会提交</div>
+            </div>
+          </div>
+          <div style="margin-top:20px;background:#006FCF;color:#fff;text-align:center;font-size:13px;font-weight:700;letter-spacing:.2px;border-radius:9px;corner-shape:superellipse(1.6);padding:12px 0;cursor:pointer;box-shadow:0 6px 16px -8px rgba(0,111,207,.5);transition:background .15s ease" style-hover="background:#0264BE">开始读取</div>
+          <div style="font-size:10.5px;color:#9CA1AB;text-align:center;margin-top:10px">技术上无法联系任何第三方（@grant none）</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ 读取中 -->
+    <div>
+      <p class="cap">③ 并行读取</p>
+      <div style="width:400px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+        <div style="background:#fff;padding:16px 20px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EEF0F3">
+          <svg width="34" height="34" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+          <div style="flex:1;font-size:15px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">Amex 助手</div>
+          <div style="width:30px;height:30px;border-radius:50%;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:15px;color:#5A5F6A;cursor:pointer;line-height:1">×</div>
+        </div>
+        <div style="padding:18px 16px 16px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px;padding:0 4px">
+            <div style="font-size:13px;font-weight:700;color:#1A1E28">并行读取 4 张卡的 offers…</div>
+            <div style="font-size:11.5px;color:#8A8F99;font-variant-numeric:tabular-nums">已完成 2 / 4</div>
+          </div>
+          <div style="height:4px;border-radius:2px;background:#E7EAEF;overflow:hidden;margin:0 4px 8px"><div style="width:50%;height:100%;border-radius:2px;background:#006FCF"></div></div>
+          <div style="font-size:10.5px;color:#9CA1AB;margin:0 4px 16px">这里只读取 Offer 列表，不会改动账户</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;gap:11px;padding:13px 14px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);align-items:center"><div style="width:40px;height:40px;border-radius:9px;corner-shape:superellipse(1.6);background:#EEF0F3"></div><div style="flex:1;display:flex;flex-direction:column;gap:7px"><div style="height:10px;width:55%;border-radius:3px;background:#EEF0F3"></div><div style="height:9px;width:78%;border-radius:3px;background:#F4F5F7"></div></div></div>
+            <div style="display:flex;gap:11px;padding:13px 14px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);align-items:center"><div style="width:40px;height:40px;border-radius:9px;corner-shape:superellipse(1.6);background:#EEF0F3"></div><div style="flex:1;display:flex;flex-direction:column;gap:7px"><div style="height:10px;width:42%;border-radius:3px;background:#EEF0F3"></div><div style="height:9px;width:66%;border-radius:3px;background:#F4F5F7"></div></div></div>
+            <div style="display:flex;gap:11px;padding:13px 14px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);align-items:center"><div style="width:40px;height:40px;border-radius:9px;corner-shape:superellipse(1.6);background:#EEF0F3"></div><div style="flex:1;display:flex;flex-direction:column;gap:7px"><div style="height:10px;width:60%;border-radius:3px;background:#EEF0F3"></div><div style="height:9px;width:50%;border-radius:3px;background:#F4F5F7"></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑤ 确认层 -->
+    <div>
+      <p class="cap">⑤ 确认层</p>
+      <div style="width:400px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden;position:relative">
+        <div style="opacity:.35;pointer-events:none">
+          <div style="background:#fff;padding:16px 20px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EEF0F3">
+            <div style="width:34px;height:34px;border-radius:9px;corner-shape:superellipse(1.6);background:#EEF0F3"></div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px"><div style="height:11px;width:40%;border-radius:3px;background:#EEF0F3"></div><div style="height:9px;width:60%;border-radius:3px;background:#F4F5F7"></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px 16px">
+            <div style="height:64px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6)"></div>
+            <div style="height:64px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6)"></div>
+            <div style="height:64px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6)"></div>
+            <div style="height:64px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6)"></div>
+          </div>
+        </div>
+        <div style="position:absolute;top:0;right:0;bottom:0;left:0;background:rgba(11,31,78,.32);display:flex;align-items:center;justify-content:center;padding:24px">
+          <div style="background:#fff;border-radius:12px;corner-shape:superellipse(1.6);box-shadow:0 24px 64px -12px rgba(0,23,90,.45);width:100%;overflow:hidden">
+            <div style="padding:18px 20px 0">
+              <div style="font-size:15px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">同时提交 9 个添加？</div>
+              <div style="font-size:11.5px;color:#8A8F99;margin-top:4px">一次性同时提交，提交后不可撤销</div>
+            </div>
+            <div style="margin:14px 20px 0;border:1px solid #ECEEF2;border-radius:8px;corner-shape:superellipse(1.6);max-height:176px;overflow:hidden">
+              <div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #F0F2F5;font-size:12px"><span style="font-weight:600;color:#1A1E28;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Hilton Hotels</span><span style="color:#5A5F6A;font-variant-numeric:tabular-nums;white-space:nowrap">3 张卡</span></div>
+              <div style="display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #F0F2F5;font-size:12px"><span style="font-weight:600;color:#1A1E28;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">The Home Depot</span><span style="color:#5A5F6A;font-variant-numeric:tabular-nums;white-space:nowrap">2 张卡</span></div>
+              <div style="display:flex;align-items:center;padding:9px 13px;font-size:12px"><span style="font-weight:600;color:#1A1E28;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">adidas</span><span style="color:#5A5F6A;font-variant-numeric:tabular-nums;white-space:nowrap">4 张卡</span></div>
+            </div>
+            <div style="padding:8px 20px 0;font-size:11px;color:#9CA1AB;font-variant-numeric:tabular-nums">共 3 个 offer · 9 次添加 · 完成后逐卡确认</div>
+            <div style="margin:8px 20px 0;background:#FBF3E0;border:1px solid #EFE2BD;border-radius:8px;corner-shape:superellipse(1.6);padding:7px 11px;font-size:10.5px;color:#9A6A00;line-height:1.5">⚠ 一次提交超过 30 个添加可能触发限流，建议分批 <span style="color:#9A6A00">（超过阈值时才显示）</span></div>
+            <div style="display:flex;gap:10px;padding:14px 20px 18px;justify-content:flex-end">
+              <div style="border:1px solid #E2E5EA;color:#5A5F6A;font-size:12.5px;font-weight:600;border-radius:9px;corner-shape:superellipse(1.6);padding:9px 18px;cursor:pointer;transition:background .15s ease" style-hover="background:#F7F8FA">取消</div>
+              <div style="background:#006FCF;color:#fff;font-size:12.5px;font-weight:700;border-radius:9px;corner-shape:superellipse(1.6);padding:9px 18px;cursor:pointer;transition:background .15s ease" style-hover="background:#0264BE">确认提交</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑥ 执行中 -->
+    <div>
+      <p class="cap">⑥ 执行中</p>
+      <div style="width:400px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+        <div style="background:#fff;padding:16px 20px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EEF0F3">
+          <svg width="34" height="34" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">正在提交…</div>
+            <div style="font-size:10.5px;color:#8A8F99;margin-top:1px">9 个添加已同时提交</div>
+          </div>
+          <div style="font-size:12px;font-weight:700;color:#006FCF;font-variant-numeric:tabular-nums">6 / 9 已有结果</div>
+        </div>
+        <div style="padding:16px 20px 0">
+          <div style="height:4px;border-radius:2px;background:#E7EAEF;overflow:hidden"><div style="width:67%;height:100%;border-radius:2px;background:#006FCF"></div></div>
+        </div>
+        <div style="display:flex;gap:8px;padding:14px 16px 0">
+          <div style="flex:1;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:12px 0;text-align:center"><div style="font-size:20px;font-weight:800;color:#0B7A3E;font-variant-numeric:tabular-nums">4</div><div style="font-size:10.5px;color:#5A5F6A;margin-top:2px">提交成功</div></div>
+          <div style="flex:1;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:12px 0;text-align:center"><div style="font-size:20px;font-weight:800;color:#C8102E;font-variant-numeric:tabular-nums">2</div><div style="font-size:10.5px;color:#5A5F6A;margin-top:2px">提交失败</div></div>
+          <div style="flex:1;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:12px 0;text-align:center"><div style="font-size:20px;font-weight:800;color:#006FCF;font-variant-numeric:tabular-nums">3</div><div style="font-size:10.5px;color:#5A5F6A;margin-top:2px">提交中</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:14px 16px 0">
+          <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6)">
+            <div style="width:16px;height:16px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite"></div>
+            <div style="flex:1;font-size:12px;color:#1A1E28">Home Depot → Blue Cash Preferred …8890</div>
+            <div style="font-size:11px;color:#006FCF;font-weight:600">提交中</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6)">
+            <div style="width:16px;height:16px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite"></div>
+            <div style="flex:1;font-size:12px;color:#1A1E28">adidas → Platinum …1005</div>
+            <div style="font-size:11px;color:#006FCF;font-weight:600">提交中</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px;padding:11px 14px;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6)">
+            <div style="width:16px;height:16px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite"></div>
+            <div style="flex:1;font-size:12px;color:#1A1E28">adidas → Gold …3021</div>
+            <div style="font-size:11px;color:#006FCF;font-weight:600">提交中</div>
+          </div>
+        </div>
+        <div style="padding:13px 20px 15px">
+          <div style="font-size:11px;color:#8A8F99"><b style="color:#9A6A00">请勿关闭本页</b> · 全部完成后重新读取已加列表逐卡确认</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑦ 结果 -->
+    <div>
+      <p class="cap">⑦ 三态结果报告</p>
+      <div style="width:400px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+        <div style="background:#fff;padding:16px 20px 14px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EEF0F3">
+          <svg width="34" height="34" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+          <div style="flex:1">
+            <div style="font-size:15px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">已完成 · 已逐卡确认</div>
+            <div style="font-size:10.5px;color:#8A8F99;margin-top:1px;font-variant-numeric:tabular-nums">9 个添加同时提交 · 用时 6 秒</div>
+          </div>
+          <div style="width:30px;height:30px;margin-right:-4px;border-radius:50%;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:15px;color:#5A5F6A;cursor:pointer;line-height:1">×</div>
+        </div>
+        <div style="display:flex;gap:8px;padding:14px 16px 0">
+          <div style="flex:1;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:13px 0;text-align:center"><div style="font-size:22px;font-weight:800;color:#0B7A3E;font-variant-numeric:tabular-nums">6</div><div style="font-size:10.5px;color:#5A5F6A;margin-top:2px">确认已加</div></div>
+          <div style="flex:1;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:13px 0;text-align:center"><div style="font-size:22px;font-weight:800;color:#C8102E;font-variant-numeric:tabular-nums">1</div><div style="font-size:10.5px;color:#5A5F6A;margin-top:2px">添加失败</div></div>
+          <div style="flex:1;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:13px 0;text-align:center"><div style="font-size:22px;font-weight:800;color:#9A6A00;font-variant-numeric:tabular-nums">2</div><div style="font-size:10.5px;color:#5A5F6A;margin-top:2px">疑似去重</div></div>
+        </div>
+        <div style="margin:12px 16px 0;background:#FBF3E0;border:1px solid #EFE2BD;border-radius:8px;corner-shape:superellipse(1.6);padding:10px 13px;font-size:11px;color:#5A5F6A;line-height:1.6"><b style="color:#9A6A00">什么是疑似去重？</b>Amex 返回了 SUCCESS，但重新读取这张卡的已加列表时没看到这个 offer——通常是 Amex 按人去重，同一 offer 只认先加的那张卡。</div>
+        <div style="margin:12px 16px 0;background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);overflow:hidden">
+          <div style="font-size:10px;font-weight:800;color:#9CA1AB;letter-spacing:.7px;padding:11px 14px 5px">确认已加</div>
+          <div style="display:flex;justify-content:space-between;padding:7px 14px;border-bottom:1px solid #F0F2F5;font-size:12px;color:#1A1E28"><span>Hilton Hotels → Platinum …1005</span><span style="color:#0B7A3E;font-weight:700">✓</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 14px;border-bottom:1px solid #F0F2F5;font-size:12px;color:#1A1E28"><span>Hilton Hotels → Gold …3021</span><span style="color:#0B7A3E;font-weight:700">✓</span></div>
+          <div style="font-size:11px;color:#9CA1AB;padding:7px 14px;border-bottom:1px solid #F0F2F5">另外 4 项 ↓</div>
+          <div style="font-size:10px;font-weight:800;color:#9CA1AB;letter-spacing:.7px;padding:11px 14px 5px">添加失败</div>
+          <div style="display:flex;justify-content:space-between;gap:8px;padding:7px 14px;border-bottom:1px solid #F0F2F5;font-size:12px;color:#1A1E28"><span>Home Depot → Gold …3021</span><span style="color:#C8102E;font-size:11px">“Offer not available”</span></div>
+          <div style="font-size:10px;font-weight:800;color:#9CA1AB;letter-spacing:.7px;padding:11px 14px 5px">疑似去重</div>
+          <div style="display:flex;justify-content:space-between;padding:7px 14px;border-bottom:1px solid #F0F2F5;font-size:12px;color:#1A1E28"><span>adidas → Platinum …1005</span><span style="color:#9A6A00;font-weight:700">⚠</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 14px 11px;font-size:12px;color:#1A1E28"><span>adidas → Gold …3021</span><span style="color:#9A6A00;font-weight:700">⚠</span></div>
+        </div>
+        <div style="padding:14px 16px 16px;display:flex;align-items:center;gap:12px">
+          <div style="flex:1"></div>
+          <div style="border:1px solid #F0D5D2;color:#C8102E;font-size:12px;font-weight:700;border-radius:9px;corner-shape:superellipse(1.6);padding:9px 16px;cursor:pointer;transition:background .15s ease" style-hover="background:#FBEAEA">重试失败项</div>
+          <div style="background:#006FCF;color:#fff;font-size:12px;font-weight:700;border-radius:9px;corner-shape:superellipse(1.6);padding:10px 18px;cursor:pointer;transition:background .15s ease" style-hover="background:#0264BE">完成</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑩ 空态/错误 -->
+    <div>
+      <p class="cap">⑩ 空态 / 登录过期 / 接口变更 / 搜索空</p>
+      <div style="display:flex;flex-direction:column;gap:24px">
+        <div style="width:340px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+          <div style="background:#fff;padding:14px 18px;display:flex;align-items:center;gap:11px;border-bottom:1px solid #EEF0F3">
+            <svg width="30" height="30" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+            <div style="flex:1;font-size:14px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">Amex 助手</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:14px;color:#5A5F6A;cursor:pointer;line-height:1">×</div>
+          </div>
+          <div style="padding:32px 24px 34px;text-align:center">
+            <div style="width:44px;height:44px;border-radius:50%;background:#EAF3EC;color:#0B7A3E;font-size:19px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">✓</div>
+            <div style="font-size:13.5px;font-weight:700;color:#1A1E28">没有可加的 offer</div>
+            <div style="font-size:12px;color:#8A8F99;margin-top:5px;line-height:1.6">所有 offer 都已加到它们可用的卡上。<br />2 分钟前读取。</div>
+            <div style="display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:#fff;border:1px solid #E2E5EA;border-radius:9px;corner-shape:superellipse(1.6);padding:9px 16px;font-size:12px;font-weight:700;color:#006FCF;cursor:pointer;transition:background .15s ease" style-hover="background:#F7F8FA"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><polyline points="21 3 21 9 15 9"></polyline></svg>重新读取</div>
+          </div>
+        </div>
+        <div style="width:340px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+          <div style="background:#fff;padding:14px 18px;display:flex;align-items:center;gap:11px;border-bottom:2px solid #C8102E">
+            <svg width="30" height="30" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+            <div style="flex:1;font-size:14px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">Amex 助手</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:14px;color:#5A5F6A;cursor:pointer;line-height:1">×</div>
+          </div>
+          <div style="padding:32px 24px 34px;text-align:center">
+            <div style="width:44px;height:44px;border-radius:50%;background:#FBEAEA;color:#C8102E;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">!</div>
+            <div style="font-size:13.5px;font-weight:700;color:#1A1E28">读取失败</div>
+            <div style="font-size:12px;color:#8A8F99;margin-top:5px;line-height:1.6">登录态可能已过期。<br />请先在本页登录 Amex，再重试。</div>
+            <div style="display:inline-block;margin-top:16px;background:#006FCF;color:#fff;border-radius:9px;corner-shape:superellipse(1.6);padding:10px 22px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px -8px rgba(0,111,207,.5);transition:background .15s ease" style-hover="background:#0264BE">重试</div>
+          </div>
+        </div>
+        <div style="width:340px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+          <div style="background:#fff;padding:14px 18px;display:flex;align-items:center;gap:11px;border-bottom:2px solid #9A6A00">
+            <svg width="30" height="30" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+            <div style="flex:1;font-size:14px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">Amex 助手</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:14px;color:#5A5F6A;cursor:pointer;line-height:1">×</div>
+          </div>
+          <div style="padding:32px 24px 34px;text-align:center">
+            <div style="width:44px;height:44px;border-radius:50%;background:#FBF3E0;color:#9A6A00;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">!</div>
+            <div style="font-size:13.5px;font-weight:700;color:#1A1E28">读取结果和预期不符</div>
+            <div style="font-size:12px;color:#8A8F99;margin-top:5px;line-height:1.6">Amex 可能更新了接口，重新登录解决不了。<br />请检查脚本是否有新版本。</div>
+            <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+              <div style="background:#006FCF;color:#fff;border-radius:9px;corner-shape:superellipse(1.6);padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px -8px rgba(0,111,207,.5);transition:background .15s ease" style-hover="background:#0264BE">查看更新 ↗</div>
+              <div style="background:#fff;border:1px solid #E2E5EA;color:#5A5F6A;border-radius:9px;corner-shape:superellipse(1.6);padding:9px 16px;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s ease" style-hover="background:#F7F8FA">仍然重试</div>
+            </div>
+          </div>
+        </div>
+        <div style="width:340px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden">
+          <div style="background:#fff;padding:14px 18px;display:flex;align-items:center;gap:11px;border-bottom:1px solid #EEF0F3">
+            <svg width="30" height="30" viewBox="0 0 128 128" style="display:block;flex-shrink:0"><path d="M38 0 L90 0 C114 0 128 14 128 38 L128 90 C128 114 114 128 90 128 L38 128 C14 128 0 114 0 90 L0 38 C0 14 14 0 38 0 Z" fill="#006FCF"></path><rect x="34" y="26" width="66" height="44" rx="7" fill="#7FB5E5"></rect><rect x="22" y="42" width="66" height="44" rx="7" fill="#fff"></rect><rect x="22" y="52" width="66" height="9" fill="#B3D4F0"></rect><rect x="30" y="70" width="26" height="6" rx="3" fill="#C9CCD0"></rect><circle cx="92" cy="90" r="21" fill="#00175A"></circle><rect x="84" y="87" width="16" height="6" rx="2" fill="#fff"></rect><rect x="89" y="82" width="6" height="16" rx="2" fill="#fff"></rect></svg>
+            <div style="flex:1;font-size:14px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">Amex 助手</div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#F2F4F7;display:flex;align-items:center;justify-content:center;font-size:14px;color:#5A5F6A;cursor:pointer;line-height:1">×</div>
+          </div>
+          <div style="padding:12px 16px 0">
+            <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #006FCF;border-radius:9px;corner-shape:superellipse(1.6);padding:9px 13px;font-size:12.5px;color:#1A1E28">⌕ saks<div style="flex:1"></div><span style="color:#9CA1AB;cursor:pointer">×</span></div>
+          </div>
+          <div style="padding:28px 24px 32px;text-align:center">
+            <div style="font-size:13px;font-weight:700;color:#1A1E28">没有匹配「saks」的 offer</div>
+            <div style="font-size:11.5px;color:#9CA1AB;margin-top:5px">试试商家英文名，或清除筛选条件</div>
+            <div style="display:inline-block;margin-top:14px;font-size:12px;font-weight:700;color:#006FCF;cursor:pointer">清除搜索</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "确认层加大批量提示" · "做成可交互原型" · "导出 icon PNG"</p>
+</section>
+
+
+</x-dc>
+</body>
+</html>
+
+</body></html>

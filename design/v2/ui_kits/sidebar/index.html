@@ -1,0 +1,83 @@
+<!-- @dsCard group="Sidebar UI Kit" viewport="440x760" subtitle="边栏 Offers·可加 交互示例(勾选→并行提交文案)" name="边栏 · Offers 可加" -->
+<!-- @startingPoint section="Screens" subtitle="边栏 Offers·可加 完整屏" viewport="440x760" -->
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../ds-loader.js"></script>
+<style>body{margin:0;font-family:var(--font-ui);background:#e8e9eb;padding:20px;display:flex;justify-content:center}</style>
+<div id="root"></div>
+<script type="text/babel">
+function findNS() { for (const k of Object.keys(window)) { const v = window[k]; if (v && typeof v === 'object' && v.Button && v.StatusChip && v.BenefitRow) return v; } return null; }
+const __found = findNS();
+(__found ? Promise.resolve(__found) : window.loadAmexDS('../../')).then(NS => {
+const { SearchBox, TextDropdown, SegmentedPill, CardChip, StatCard, GroupHeader, OfferRow, PanelHeader, ActionBar, BenefitRow } = NS;
+
+const OFFERS = [
+  { id: 1, title: 'Travel in Italy with Italo trains', desc: 'Spend $250 or more, earn $50 back', tile: 'IT', bg: '#B02A1E', cards: 8, exp: '至 12/27' },
+  { id: 2, title: 'Shop in France at Le Bon Marché', desc: 'Spend $350 or more, earn $75 back', tile: 'LB', bg: '#1A1E28', cards: 8, exp: '至 10/31' },
+  { id: 3, title: 'Shop in France at Extime Duty Free', desc: 'Spend $300 or more, earn $50 back', tile: 'EX', bg: '#0E6E5C', cards: 8, exp: '至 9/30' },
+  { id: 4, title: 'Stay in Spain at Barceló Hotels', desc: 'Earn 20% back, up to a total of $100', tile: 'BA', bg: '#5B3E96', cards: 8, exp: '至 10/7' },
+];
+
+const BENEFITS = [
+  { title: '$300 Digital Entertainment Credit', sub: 'Platinum ⋯31004', used: 0, total: 25 },
+  { title: 'Walmart+ Monthly Membership Credit', sub: '4 张卡 · 各 $12.95', used: 0, total: 51.8 },
+  { title: '$240 Flexible Business Credit', sub: '2 张卡 · 各 $20', used: 8.63, total: 40 },
+];
+
+function App() {
+  const [tab, setTab] = React.useState('Offers');
+  const [seg, setSeg] = React.useState('addable');
+  const [q, setQ] = React.useState('');
+  const [card, setCard] = React.useState('all');
+  const [sel, setSel] = React.useState({});
+  const list = OFFERS.filter(o => o.title.toLowerCase().includes(q.toLowerCase()));
+  const selIds = Object.keys(sel).filter(k => sel[k]);
+  const reqs = selIds.reduce((n, id) => n + OFFERS.find(o => String(o.id) === id).cards, 0);
+  return (
+    <div style={{ width: 400, borderRadius: 'var(--r-panel)', cornerShape: 'superellipse(1.6)', background: 'var(--surface-page)', border: '1px solid var(--border-3)', boxShadow: 'var(--shadow-panel)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <PanelHeader subtitle="166 个 offer · 8 张卡 · 刚刚更新" tabs={['Offers', 'Benefits']} activeTab={tab} onTab={setTab} />
+      {tab === 'Offers' ? (
+        <>
+          <div style={{ padding: '14px 16px 0' }}>
+            <SegmentedPill options={[{ value: 'addable', label: '可加', count: 143 }, { value: 'added', label: '已加', count: 37 }]} value={seg} onChange={setSeg} />
+            <SearchBox placeholder="搜索商家或 offer" value={q} onChange={setQ} style={{ marginTop: 12 }} />
+            <div style={{ display: 'flex', gap: 7, marginTop: 12, overflow: 'hidden' }}>
+              <CardChip label="全部卡" active={card === 'all'} onClick={() => setCard('all')} />
+              <CardChip label="⋯31004" art="silver" active={card === '31004'} onClick={() => setCard('31004')} />
+              <CardChip label="⋯91003" art="silver" active={card === '91003'} onClick={() => setCard('91003')} />
+              <div style={{ width: 1, background: 'var(--border-1)', margin: '4px 1px', flexShrink: 0 }}></div>
+              <CardChip label="只看多卡" dashed />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, padding: '0 4px' }}>
+              <div style={{ fontSize: 'var(--fs-sub)', fontWeight: selIds.length ? 700 : 600, color: selIds.length ? 'var(--navy)' : 'var(--text-4)', letterSpacing: '.2px' }}>{selIds.length ? '已选 ' + selIds.length + ' 个 OFFER' : list.length + ' 个可加 OFFER'}</div>
+              <div onClick={() => setSel(selIds.length ? {} : Object.fromEntries(OFFERS.map(o => [o.id, true])))} style={{ fontSize: 'var(--fs-body)', fontWeight: selIds.length ? 600 : 700, color: selIds.length ? 'var(--text-4)' : 'var(--amex-blue)', cursor: 'pointer' }}>{selIds.length ? '清空' : '全选可加'}</div>
+            </div>
+          </div>
+          <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 16px 12px' }}>
+            {list.map(o => (
+              <OfferRow key={o.id} selectable selected={!!sel[o.id]} onSelect={v => setSel({ ...sel, [o.id]: v })} title={o.title} description={o.desc} tile={o.tile} tileBg={o.bg} badge={(sel[o.id] ? o.cards + ' 张卡' : '可加 ' + o.cards) + ' ▾'} meta={o.exp} />
+            ))}
+          </div>
+          <ActionBar selectedCount={selIds.length} requestCount={reqs} onSubmit={() => alert('并行一次发出 ' + reqs + ' 个添加请求(demo)')} />
+        </>
+      ) : (
+        <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <SearchBox placeholder="搜索 benefit 或卡" />
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <StatCard value="$138.17" label="本月还没用的" />
+            <StatCard value="$1663.63" label="今年已返现" tone="success" />
+            <StatCard value="36%" label="年费回本" />
+          </div>
+          <div style={{ marginTop: 8 }}><GroupHeader label="每月" badge="还剩 19 天" summary="4 项 · $138.17 待用" /></div>
+          {BENEFITS.map(b => <BenefitRow key={b.title} title={b.title} subtitle={b.sub} used={b.used} total={b.total} />)}
+          <div style={{ fontSize: 'var(--fs-caption)', color: 'var(--text-5)', padding: '4px 4px 0' }}>进度按报表返现记录自动归类 · 纯只读,不在本地存任何数据</div>
+        </div>
+      )}
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+}).catch(e => { document.getElementById('root').innerHTML = '<div style="font:12px system-ui;color:#8A8F99;padding:8px">组件加载失败: ' + e.message + '</div>'; });
+</script>
