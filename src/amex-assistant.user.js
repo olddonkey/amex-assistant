@@ -3674,16 +3674,21 @@
     .wbtn:hover { background: var(--hover-on-white); }
 
     /* Wide Benefits: compact inline stat tiles + period sections. */
-    .wbstats { display: flex; gap: 8px; flex: none; }
+    /* Stat tiles sit in the same control row as the search box on every tab,
+       so they stretch to the row's height and keep value + label on ONE line —
+       otherwise the Benefits top block is taller than the Offers one and the
+       chips row jumps when switching tabs. */
+    .wbstats { display: flex; gap: 8px; flex: none; align-self: stretch; }
     .wbtile { background: #fff; border: 1px solid var(--line);
-      border-radius: var(--r-item); corner-shape: var(--se); padding: 9px 16px;
-      text-align: center; }
+      border-radius: var(--r-btn); corner-shape: var(--se); padding: 0 14px;
+      display: flex; align-items: center; gap: 7px; }
     .wbtile .n { font-size: var(--fs-stat); font-weight: 800;
       font-variant-numeric: tabular-nums; }
     .wbtile .n.navy { color: var(--navy); }
     .wbtile .n.green { color: var(--green); }
     .wbtile .n.ink { color: var(--ink); }
-    .wbtile .l { font-size: var(--fs-sub); color: var(--sub); margin-top: 1px; }
+    .wbtile .l { font-size: var(--fs-sub); color: var(--sub);
+      white-space: nowrap; }
     .wbgh { display: flex; align-items: center; justify-content: space-between;
       gap: 10px; padding: 0 4px; margin-top: 10px; }
     .wbgh.first { margin-top: 2px; }
