@@ -359,6 +359,7 @@
       colMerchantOffer: '商家 / OFFER',
       colExpiry: '到期',
       colCardStatus: '各卡状态',
+      colStatus: '状态',
       colChooseCards: '加到哪些卡（点 chip 勾选）',
       colOffer: 'OFFER',
       colCardResult: '各卡结果',
@@ -561,6 +562,7 @@
       colMerchantOffer: 'Merchant / offer',
       colExpiry: 'Expires',
       colCardStatus: 'Per-card status',
+      colStatus: 'Status',
       colChooseCards: 'Add to which cards (tap a chip)',
       colOffer: 'OFFER',
       colCardResult: 'Per-card result',
@@ -2705,11 +2707,28 @@
     if (!panelHost) return;
     const s = panelHost.style;
     if (wide) {
-      s.top = '50%';
-      s.left = '50%';
-      s.right = 'auto';
-      s.bottom = 'auto';
-      s.transform = 'translate(-50%, -50%)';
+      // A previously dragged spot wins over centering; clamp it to the current
+      // viewport using the overlay's own metrics (the .p may still be laid out
+      // at sidebar size at this point in the render).
+      const saved = savedPosition('panelWide');
+      if (saved) {
+        const w = Math.min(880, window.innerWidth - 24);
+        const h = window.innerHeight - 56;
+        const x = Math.max(4, Math.min(saved.x, window.innerWidth - w - 4));
+        const y = Math.max(4,
+          Math.min(saved.y, Math.max(4, window.innerHeight - h - 4)));
+        s.left = `${x}px`;
+        s.top = `${y}px`;
+        s.right = 'auto';
+        s.bottom = 'auto';
+        s.transform = 'none';
+      } else {
+        s.top = '50%';
+        s.left = '50%';
+        s.right = 'auto';
+        s.bottom = 'auto';
+        s.transform = 'translate(-50%, -50%)';
+      }
     } else {
       s.transform = '';
       const saved = savedPosition('panel');
@@ -3498,8 +3517,6 @@
       max-height: none;
       transform-origin: center;
     }
-    /* Wide is a fixed centered overlay; dragging stays a sidebar-only affordance. */
-    .p[data-density="wide"] .hrow { cursor: default; }
     /* Transient/centered views (confirm, trust, error, empty, loading) keep the
        sidebar blocks but centered in the shell instead of stretched to 880px. */
     .p[data-density="wide"] .body { flex: 1; }
@@ -3593,6 +3610,12 @@
 
     /* Per-card status chips — the wide core construct (StatusChip). */
     .wchips { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+    /* Single-card reading (按卡 sections / single-card filter): a status word
+       in the chips column instead of a redundant card chip. */
+    .wstat { font-size: var(--fs-body); color: var(--sub);
+      font-variant-numeric: tabular-nums; }
+    .wstat.ok { color: var(--green); font-weight: 600; }
+    .wstat.mut { color: var(--text-4); }
     .wchip { display: inline-flex; align-items: center; gap: 4px;
       font-size: var(--fs-caption); font-weight: 600; color: var(--sub);
       background: var(--panel); border: 1px solid var(--surface-seg);
@@ -6101,13 +6124,18 @@
     const ctl = el('div', {class: 'wctlrow'}, wideSubPills(), box);
     const groups0 = buildAddedIndex(state.cards, state.redeemed.byToken);
     const hasCat = groups0.some((g) => g.category);
-    ctl.append(renderAddedGroupDropdown(hasCat, effectiveAddedMode(hasCat)));
+    const mode = effectiveAddedMode(hasCat);
+    ctl.append(renderAddedGroupDropdown(hasCat, mode));
     top.append(ctl);
     top.append(renderAddedCardChips());
+    // 按卡 sections and single-card filtering render status words, not chips,
+    // so the third column header follows suit.
+    const singleRead = mode === 'card' || state.addedCardFilter !== 'all';
     top.append(el('div', {class: 'wcolh'},
       el('div', {class: 'cw-flex', text: t('colMerchantOffer')}),
       el('div', {class: 'cw-exp', text: t('colExpiry')}),
-      el('div', {class: 'cw-chips', text: t('colCardStatus')})));
+      el('div', {class: 'cw-chips',
+        text: t(singleRead ? 'colStatus' : 'colCardStatus')})));
     shell.append(top);
     shell.append(el('div', {class: 'wscroll', id: 'wscroll'}));
     fillWideAddedRows(shell);
@@ -6194,6 +6222,14 @@
    * @return {!Element} The row.
    */
   function renderWideAddedRow(g, cf) {
+    // A single-card filter reads like a 按卡 row: status word, no chip (the
+    // chip would just repeat the digits already selected in the filter).
+    if (cf !== 'all') {
+      const c = g.cards.find((x) => x.token === cf);
+      return el('div', {class: 'wrow'},
+        wideMnCell(g.name, g.description, g.image),
+        ...wideSingleCells(c && c.redeemed, g.daysLeft, g.expiry));
+    }
     const exp = el('div', {class: 'wexp cw-exp'});
     if (Number.isFinite(g.daysLeft)) {
       if (g.daysLeft <= 7) exp.classList.add('urgent');
@@ -6277,39 +6313,53 @@
         el('b', {class: 'mut', text: t('cardGroupPending')}));
     }
     frag.append(el('div', {class: 'wcardsec'}, thumb, nm, sum));
-    for (const o of cg.offers) frag.append(renderWideCardOfferRow(o, cg.token));
+    for (const o of cg.offers) frag.append(renderWideCardOfferRow(o));
     return frag;
   }
 
   /**
-   * One offer row inside a 按卡 wide section: merchant cell, this card's own
-   * days-left / posted status, and its single status chip.
+   * The expiry + status cells for a row that reads as ONE card (a 按卡 section
+   * row, or any row under a single-card filter). Mirrors the sidebar's
+   * single-card language (8final C/D): redeemed = green `✓ $X 已返现` with the
+   * posted date in the expiry slot; pending = days-left + grey `待消费`. No
+   * card chip — it would repeat what the section header / filter already says
+   * and leave the rest of the column as whitespace.
+   * @param {?Object} redeemed The card's redemption record, if any.
+   * @param {number} daysLeft Days to expiry. @param {string} expiry Raw label.
+   * @return {!Array<!Element>} `[expCell, statusCell]`.
+   */
+  function wideSingleCells(redeemed, daysLeft, expiry) {
+    const exp = el('div', {class: 'wexp cw-exp'});
+    const stat = el('div', {class: 'wstat cw-chips'});
+    if (redeemed) {
+      stat.classList.add('ok');
+      stat.textContent = singleRedeemedText(redeemed);
+      if (redeemed.date) {
+        exp.textContent = t('postedOn', {date: redeemed.date});
+      }
+    } else {
+      if (Number.isFinite(daysLeft)) {
+        if (daysLeft <= 7) exp.classList.add('urgent');
+        exp.textContent = daysLabel(daysLeft);
+      } else {
+        exp.textContent = shortExpiry(expiry);
+      }
+      stat.classList.add('mut');
+      stat.textContent = t('statPending');
+    }
+    return [exp, stat];
+  }
+
+  /**
+   * One offer row inside a 按卡 wide section: merchant cell plus the
+   * single-card expiry/status cells ({@link wideSingleCells}).
    * @param {!Object} o A per-card offer from {@link buildAddedByCard}.
-   * @param {string} token The card token.
    * @return {!Element} The row.
    */
-  function renderWideCardOfferRow(o, token) {
-    const exp = el('div', {class: 'wexp cw-exp'});
-    let tone = 'gray';
-    let suffix = '';
-    if (o.redeemed) {
-      tone = 'green';
-      suffix = '✓';
-      if (o.redeemed.amount > 0) {
-        suffix += ` ${o.redeemed.unit === 'points' ?
-          fmtPoints(o.redeemed.amount) : fmtMoney(o.redeemed.amount)}`;
-      }
-      if (o.redeemed.date) exp.textContent = o.redeemed.date;
-    } else if (Number.isFinite(o.daysLeft)) {
-      if (o.daysLeft <= 7) exp.classList.add('urgent');
-      exp.textContent = daysLabel(o.daysLeft);
-    } else {
-      exp.textContent = shortExpiry(o.expiry);
-    }
-    const chips = el('div', {class: 'wchips cw-chips'},
-      wideChip({token, tone, suffix}));
+  function renderWideCardOfferRow(o) {
     return el('div', {class: 'wrow'},
-      wideMnCell(o.name, o.description, o.image), exp, chips);
+      wideMnCell(o.name, o.description, o.image),
+      ...wideSingleCells(o.redeemed, o.daysLeft, o.expiry));
   }
 
   /** @param {!Element} shell Panel content root (9d). */
@@ -6659,6 +6709,16 @@
       if (opts.only && !e.target.closest(opts.only)) return;
       if (opts.ignore && e.target.closest(opts.ignore)) return;
       const rect = host.getBoundingClientRect();
+      // The wide overlay centers via translate(-50%,-50%); freeze the current
+      // visual spot as plain left/top before dragging so the math below (which
+      // writes untransformed left/top) doesn't make the panel jump.
+      if (host.style.transform && host.style.transform !== 'none') {
+        host.style.left = `${rect.left}px`;
+        host.style.top = `${rect.top}px`;
+        host.style.right = 'auto';
+        host.style.bottom = 'auto';
+        host.style.transform = 'none';
+      }
       const offX = e.clientX - rect.left;
       const offY = e.clientY - rect.top;
       const startX = e.clientX;
@@ -6684,8 +6744,10 @@
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
         if (moved) {
-          if (opts.storeKey) {
-            savePosition(opts.storeKey,
+          const storeKey = typeof opts.storeKey === 'function' ?
+            opts.storeKey() : opts.storeKey;
+          if (storeKey) {
+            savePosition(storeKey,
               {x: lastX, y: lastY, float: !!opts.float});
           }
         } else if (opts.onClick) {
@@ -6824,10 +6886,11 @@
     root.append(el('style', {text: PANEL_STYLE}));
     root.append(el('div', {class: 'p', id: 'shell'}));
     // Drag the panel by its title row; buttons/tabs keep their own clicks.
-    // The wide overlay is a fixed centered box, so dragging is skipped there.
+    // Both densities drag by the header; each remembers its own spot so the
+    // wide overlay's placement never fights the sidebar's.
     makeDraggable(host, root, {only: '.hrow',
-      ignore: 'button, .rf, .cl, .densbtn', storeKey: 'panel',
-      skip: () => currentDensity() === 'wide'});
+      ignore: 'button, .rf, .cl, .densbtn',
+      storeKey: () => currentDensity() === 'wide' ? 'panelWide' : 'panel'});
     return root;
   }
 
