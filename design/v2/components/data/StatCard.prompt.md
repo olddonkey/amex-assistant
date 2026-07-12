@@ -6,3 +6,8 @@ Plain white stat card (number + label). Row of 3 under the search box. Never tin
   <StatCard value="2" label="7 天内过期" tone="danger" />
 </div>
 ```
+v1.2 落地修订: in WIDE mode the tiles sit in the same control row as the
+search box, so they are single-line (value + label inline), stretched to the
+row's height, radius 9px (control tier) — otherwise the Benefits top block is
+taller than the Offers one and content jumps on tab switch. The stacked
+two-line form remains the sidebar layout.
