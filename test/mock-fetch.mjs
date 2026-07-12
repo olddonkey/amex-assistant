@@ -118,7 +118,8 @@ export function createMockFetch(scenario) {
    */
   async function mockFetch(url, options = {}) {
     const body = options.body ? JSON.parse(options.body) : null;
-    calls.push({url, method: options.method || 'GET', body});
+    calls.push({url, method: options.method || 'GET', body,
+      headers: options.headers || {}});
 
     if (url.endsWith('/api/servicing/v1/member')) {
       return jsonResponse({accounts: scenario.accounts || []});

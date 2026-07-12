@@ -728,15 +728,18 @@
    * set — the browser adds it automatically on cross-origin requests.
    * @param {string} url Request URL.
    * @param {!Object} body JSON-serializable request body.
+   * @param {!Object<string, string>=} headers Extra headers, merged over the
+   *     defaults (e.g. a different `Accept` for an endpoint that needs one).
    * @return {!Promise<!Object>} Parsed JSON response.
    */
-  function postJson(url, body) {
+  function postJson(url, body, headers = {}) {
     return requestJson(url, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        ...headers,
       },
       body: JSON.stringify(body),
     });
@@ -1128,8 +1131,11 @@
    * @return {!Promise<!Array<!Object>>} Raw tracker objects for the card.
    */
   async function fetchAccountBenefits(token) {
+    // This endpoint answers to `Accept: */*`; a stricter `application/json`
+    // can come back empty, so override just the Accept header here.
     const data = await postJson(READ_BENEFITS_URL,
-      [{accountToken: token, locale: LOCALE, limit: BENEFIT_LIMIT}]);
+      [{accountToken: token, locale: LOCALE, limit: BENEFIT_LIMIT}],
+      {'Accept': '*/*'});
     const blocks = Array.isArray(data) ? data : [];
     return blocks.flatMap((block) => block.trackers || []);
   }
