@@ -3965,18 +3965,20 @@
       '<line x1="3" y1="21" x2="10" y2="14"></line></svg>';
 
   /**
-   * "Collapse to the sidebar" glyph (arrows to opposite corners), shown in the
-   * wide header's 收窄 pill. Inherits color via `currentColor`.
+   * "Collapse to the sidebar" glyph, shown in the wide header's 收窄 pill.
+   * The arrowheads sit near the CENTER pointing inward (corners pull in) —
+   * the mirror of EXPAND_SVG, whose heads sit at the corners pointing out.
+   * Inherits color via `currentColor`.
    * @const {string}
    */
   const COLLAPSE_SVG =
       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" ' +
       'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round" style="display:block">' +
-      '<polyline points="9 3 3 3 3 9"></polyline>' +
-      '<polyline points="15 21 21 21 21 15"></polyline>' +
-      '<line x1="3" y1="3" x2="10" y2="10"></line>' +
-      '<line x1="21" y1="21" x2="14" y2="14"></line></svg>';
+      '<polyline points="20 10 14 10 14 4"></polyline>' +
+      '<polyline points="4 14 10 14 10 20"></polyline>' +
+      '<line x1="14" y1="10" x2="21" y2="3"></line>' +
+      '<line x1="10" y1="14" x2="3" y2="21"></line></svg>';
 
   /** A small check mark for the wide "只看多卡可加" filled checkbox. */
   const CHECK_SVG =
