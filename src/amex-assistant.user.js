@@ -297,7 +297,6 @@
       benefitsReadFailed: '读取失败',
       searchBenefits: '搜索 benefit 或卡',
       sortByExpiry: '按到期时间排序 ',
-      unusedOnly: '只看还有余额的',
       benefitsFootnote: '进度按报表返现记录自动归类 · 纯只读，不在本地存任何数据',
       noBenefitsMatch: '没有匹配「{q}」的 benefit',
       noBenefits: '这些卡上没有可追踪的 benefit',
@@ -307,8 +306,19 @@
       feeOffset: '年费回本 {spent}/{fee}',
       trackedOnly: '仅含可自动追踪项',
       trackedOnly2: '按可追踪项目',
-      usedUpSection: '本周期已用完',
-      xCards: '×{n} 张卡',
+      // Period group headers + three-state row language (13a).
+      periodEvery_month: '每月',
+      periodEvery_quarter: '每季',
+      periodEvery_half: '每半年',
+      periodEvery_year: '每年',
+      benefitPending: '{n} 项 · {amt} 待用',
+      benefitPendingActivate: '{n} 项 · {amt} 待激活',
+      notUsed: '未使用',
+      usedPct: '已用 {n}%',
+      usedUp: '已用完',
+      xCardsEach: '{n} 张卡 · 各 {amt}',
+      xCardsTotal: '{n} 张卡 · 共 {amt}',
+      untrackable: '无法自动追踪',
       notActivated: '未激活',
       activate: '去激活 ↗',
       expired: '已过期',
@@ -471,7 +481,6 @@
       benefitsReadFailed: 'Read failed',
       searchBenefits: 'Search benefits or cards',
       sortByExpiry: 'Sorted by expiry ',
-      unusedOnly: 'Unused balance only',
       benefitsFootnote: 'Amounts come from Amex benefit trackers · ' +
           'read-only, nothing stored locally',
       noBenefitsMatch: 'No benefits match "{q}"',
@@ -482,8 +491,19 @@
       feeOffset: 'Fee offset {spent}/{fee}',
       trackedOnly: 'Auto-tracked credits only',
       trackedOnly2: 'Tracked credits only',
-      usedUpSection: 'Used up this period',
-      xCards: '×{n} cards',
+      // Period group headers + three-state row language (13a).
+      periodEvery_month: 'Monthly',
+      periodEvery_quarter: 'Quarterly',
+      periodEvery_half: 'Semi-annual',
+      periodEvery_year: 'Annual',
+      benefitPending: '{n} items · {amt} left',
+      benefitPendingActivate: '{n} items · {amt} to activate',
+      notUsed: 'Unused',
+      usedPct: '{n}% used',
+      usedUp: 'Used up',
+      xCardsEach: '{n} cards · {amt} each',
+      xCardsTotal: '{n} cards · {amt} total',
+      untrackable: "Can't auto-track",
       notActivated: 'Not activated',
       activate: 'Activate ↗',
       expired: 'Expired',
@@ -1439,7 +1459,64 @@
         benefits.push(b);
       }
     }
+    // Collect the perks we can't put a dollar tracker on (spend-to-unlock,
+    // pass-based, or catalog perks issued elsewhere) so the UI can list them
+    // honestly. This does not change what `benefits` contains — those items
+    // stay dropped from the tracked list; the summary rides along as a
+    // property so callers that only iterate the array are unaffected.
+    benefits.untrackable = collectUntrackableBenefits(perCard);
     return benefits;
+  }
+
+  /**
+   * Gathers the benefits we deliberately keep out of the tracked list because
+   * no dollar tracker maps to them, so the Benefits view can surface them under
+   * a de-emphasized "无法自动追踪" row. Two sources, deduped by name:
+   *   1. Trackers dropped by {@link isTrackedCredit} — spend-to-unlock
+   *      milestones (`category === 'spend'`) and pass-based perks
+   *      (`targetUnit === 'PASSES'`).
+   *   2. Enrolled catalog perks whose `sorBenefitId` matches no dollar tracker
+   *      (e.g. Uber Cash, issued inside the Uber app). Not-enrolled enrollable
+   *      credits are excluded — those already surface as "去激活" rows.
+   * @param {!Array<{card: !Object, trackers: !Array<!Object>,
+   *     catalog: !Object}>} perCard Raw per-card reads.
+   * @return {!Array<{name: string, family: string, digits: string,
+   *     token: string}>} Untrackable items in first-seen order.
+   */
+  function collectUntrackableBenefits(perCard) {
+    const trackedSor = new Set();
+    for (const {trackers} of perCard) {
+      for (const t of trackers || []) {
+        if (!isTrackedCredit(t)) continue;
+        const sor = t.sorBenefitId || t.benefitId || '';
+        if (sor) trackedSor.add(sor);
+      }
+    }
+    const out = [];
+    const seen = new Set();
+    const push = (name, card) => {
+      const key = benefitNameKey(name);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push({name, family: card.family, digits: card.digits,
+        token: card.token});
+    };
+    for (const {card, trackers} of perCard) {
+      for (const t of trackers || []) {
+        if (!isTrackedCredit(t)) push(t.benefitName || '', card);
+      }
+    }
+    for (const {card, catalog} of perCard) {
+      for (const slug of Object.keys(catalog || {})) {
+        const c = catalog[slug];
+        if (!c || c.layoutType === 'NOTENROLLED') continue;
+        const sor = c.sorBenefitId || '';
+        if (sor && trackedSor.has(sor)) continue;
+        push(decodeHtml(
+          c.benefitTitle || c.benefitShortTitle || c.benefitName || ''), card);
+      }
+    }
+    return out;
   }
 
   /**
@@ -1493,27 +1570,45 @@
   }
 
   /**
-   * Computes the benefits header stats from grouped benefits.
+   * Computes the benefits header stats from grouped benefits. With `cardFilter`
+   * set to a token the three tiles narrow to that one card: only its own
+   * entries count toward redeemed / this-month-unused, and only its annual fee
+   * feeds the payback percentage (the "single-card" reading behind the card
+   * chips filter).
    * @param {!Array<!Object>} groups Grouped benefits.
    * @param {!Array<!Object>} cards Snapshot cards (for annual-fee lookup).
    * @param {number=} now Epoch ms treated as "today".
+   * @param {string=} cardFilter `'all'` (every card) or a card token.
    * @return {{thisMonthUnused: number, redeemedYtd: number,
    *           annualFee: number, paybackPct: number}} Stats.
    */
-  function benefitStats(groups, cards, now = Date.now()) {
+  function benefitStats(groups, cards, now = Date.now(), cardFilter = 'all') {
     const nowDate = new Date(now);
     let thisMonthUnused = 0;
     let redeemedYtd = 0;
-    for (const g of groups) {
-      redeemedYtd += g.spent;
-      const end = new Date(g.periodEnd);
+    const addUnused = (endStr, amount) => {
+      const end = new Date(endStr);
       if (!Number.isNaN(end.getTime()) &&
           end.getFullYear() === nowDate.getFullYear() &&
           end.getMonth() === nowDate.getMonth()) {
-        thisMonthUnused += g.remaining;
+        thisMonthUnused += amount;
+      }
+    };
+    for (const g of groups) {
+      if (cardFilter === 'all') {
+        redeemedYtd += g.spent;
+        addUnused(g.periodEnd, g.remaining);
+        continue;
+      }
+      for (const e of g.entries || []) {
+        if (e.token !== cardFilter) continue;
+        redeemedYtd += e.spent;
+        addUnused(e.periodEnd || g.periodEnd, Math.max(0, e.target - e.spent));
       }
     }
-    const owned = cards.filter((c) => (c.relationship || 'BASIC') === 'BASIC');
+    const owned = cards
+      .filter((c) => (c.relationship || 'BASIC') === 'BASIC')
+      .filter((c) => cardFilter === 'all' || c.token === cardFilter);
     const annualFee = owned.reduce((s, c) => s + annualFeeFor(c.family), 0);
     const paybackPct =
         annualFee > 0 ? Math.round(redeemedYtd / annualFee * 100) : 0;
@@ -1523,6 +1618,73 @@
       annualFee,
       paybackPct,
     };
+  }
+
+  /** Nominal length of each reset period in days (for the amber rule). */
+  const BENEFIT_PERIOD_DAYS = {month: 31, quarter: 91, half: 182, year: 365};
+  /** The order period groups render in (soonest cadence first). */
+  const BENEFIT_PERIOD_ORDER = ['month', 'quarter', 'half', 'year'];
+
+  /**
+   * The tone for a period group's "还剩 N 天" badge. Amber only once the
+   * period is more than three-quarters elapsed (remaining < 25% of the
+   * nominal length); grey otherwise. This replaces the old per-row ≤7-day
+   * red-days rule inside the Benefits page (the offers page keeps its own
+   * red "expiring" rule, which is unrelated).
+   * @param {string} period Cadence key (`month`/`quarter`/`half`/`year`).
+   * @param {number} daysLeft Whole days until the period resets.
+   * @return {string} `'amber'` or `'gray'`.
+   */
+  function benefitPeriodTone(period, daysLeft) {
+    if (!Number.isFinite(daysLeft)) return 'gray';
+    const full = BENEFIT_PERIOD_DAYS[period] || BENEFIT_PERIOD_DAYS.year;
+    return daysLeft < full * 0.25 ? 'amber' : 'gray';
+  }
+
+  /**
+   * Buckets finalized benefit groups by reset cadence into ordered period
+   * sections (每月/每季/每半年/每年), each carrying the summary the group
+   * header renders: the soonest reset (min finite `daysLeft`), the item count,
+   * and the pending dollars. When a period holds only not-yet-activated
+   * benefits the pending amount is their target sum and `activation` flips true
+   * (the header then reads "待激活" instead of "待用"); fully-used groups
+   * contribute nothing to the pending amount.
+   * @param {!Array<!Object>} groups Finalized benefit groups.
+   * @return {!Array<{period: string, daysLeft: number, count: number,
+   *     amount: number, activation: boolean, groups: !Array<!Object>}>}
+   *     Non-empty period sections in cadence order.
+   */
+  function buildBenefitPeriodGroups(groups) {
+    const byPeriod = new Map();
+    for (const g of groups) {
+      const p = BENEFIT_PERIOD_ORDER.includes(g.period) ? g.period : 'year';
+      if (!byPeriod.has(p)) byPeriod.set(p, []);
+      byPeriod.get(p).push(g);
+    }
+    const out = [];
+    for (const period of BENEFIT_PERIOD_ORDER) {
+      const list = byPeriod.get(period);
+      if (!list || !list.length) continue;
+      let amount = 0;
+      let activeRemaining = 0;
+      let hasInactive = false;
+      let daysLeft = Infinity;
+      for (const g of list) {
+        if (Number.isFinite(g.daysLeft) && g.daysLeft < daysLeft) {
+          daysLeft = g.daysLeft;
+        }
+        if (isInactiveBenefit(g)) {
+          hasInactive = true;
+          amount += g.target;
+        } else if (!g.fullyUsed) {
+          amount += g.remaining;
+          activeRemaining += g.remaining;
+        }
+      }
+      out.push({period, daysLeft, count: list.length, amount: round2(amount),
+        activation: activeRemaining <= 0 && hasInactive, groups: list});
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------------------
@@ -2176,8 +2338,12 @@
     fetchAccountBenefits,
     fetchCardCatalog,
     fetchAllBenefits,
+    collectUntrackableBenefits,
     buildBenefitIndex,
     benefitStats,
+    benefitPeriodTone,
+    buildBenefitPeriodGroups,
+    isInactiveBenefit,
     annualFeeFor,
     benefitPeriodLabel,
     daysUntil,
@@ -2265,9 +2431,14 @@
     benefitsRun: null,
     benefitsReadAt: 0,
     benefitsExpanded: new Set(),
-    benefitUnusedOnly: true,
-    benefitDoneOpen: false,
+    // Single-card filter for the Benefits tab (its own chips row), kept apart
+    // from the offers views' filters so tabs never cross-taint.
+    benefitCardFilter: 'all',
     benefitQuery: '',
+    // Perks with no dollar tracker, surfaced under a de-emphasized collapsible
+    // "无法自动追踪" row at the bottom of the list.
+    benefitsUntrackable: [],
+    benefitsUntrackableOpen: false,
   };
 
   /** Panel host + shadow root, created lazily and reused across opens. */
@@ -2448,16 +2619,6 @@
     return (letters || String(name).slice(0, 2)).toUpperCase();
   }
 
-  /**
-   * Initials for a benefit square, ignoring a leading "$300" so the letters
-   * come from the name ("$300 Digital Entertainment" → "DE", not "3D").
-   * @param {string} name Benefit name.
-   * @return {string} Letter initials.
-   */
-  function benefitInitials(name) {
-    return merchantInitials(String(name).replace(/^\s*\$[\d,]+\s*/, ''));
-  }
-
   /** @param {!OfferGroup} g Offer group. @return {string} Short expiry, e.g. */
   /**   "至 7/7". */
   function expiryLabel(g) {
@@ -2587,7 +2748,8 @@
        true circles keep border-radius:50% and are excluded on purpose. */
     .subpills, .subpill, .sr input, .cfil, .grp, .cards, .logo, .cnt .c,
     .go, .lnk.rerun, .info, .banner, .cfdlg, .cf-list, .bactivate, .msg .btn,
-    .brow, .bgrp, .bsec, .bstats .c, .agrp, .actbtn, .ic.brand, .cfsw, .sw,
+    .bgrp, .bstats .c, .buntrack, .buntrack-item, .agrp, .actbtn, .ic.brand,
+    .cfsw, .sw,
     .expandbox, .trust-b, .cir { corner-shape: var(--se); }
 
     /* ---- header ---- */
@@ -2962,91 +3124,107 @@
     .bstats .c { flex: 1; background: #fff; border: 1px solid var(--line);
       border-radius: 12px; corner-shape: var(--se); padding: 11px 0;
       text-align: center; }
-    .bval { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .bval { font-size: var(--fs-stat); font-weight: 800;
+      font-variant-numeric: tabular-nums; }
     .bval.navy { color: var(--navy); }
     .bval.green { color: var(--green); }
     .bval.ink { color: var(--ink); }
     .blbl { font-size: var(--fs-caption); color: var(--sub); margin-top: 2px; }
     .bsub2 { font-size: 9px; color: var(--fog); margin-top: 1px; }
-    .btb { display: flex; align-items: center; padding: 12px 20px 2px;
-      font-size: var(--fs-body); }
-    .btb .sp { flex: 1; }
-    .sortlbl { font-weight: 600; color: var(--sub2); cursor: pointer; }
-    .caret { font-size: 10px; color: var(--fog); }
-    .unused { display: flex; align-items: center; gap: 6px; color: var(--sub);
-      cursor: pointer; }
-    .unused input[type=checkbox] { width: 13px; height: 13px; }
-    .blist { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; }
-    .bgrp { background: #fff; border: 1px solid var(--line); border-radius: 12px;
-      corner-shape: var(--se);
-      box-shadow: 0 1px 2px rgba(0,23,90,.04), 0 16px 32px -24px rgba(0,23,90,.18); }
-    .bgrp.exp { border-color: rgba(0,111,207,.3);
-      box-shadow: 0 12px 28px -14px rgba(0,111,207,.35); }
-    .brow { display: flex; gap: 11px; padding: 13px 14px 7px;
-      align-items: center; }
-    .brow.flat { padding: 13px 14px; }
-    .blogo { width: 40px; height: 40px; border-radius: 9px; corner-shape: var(--se);
-      flex: none; display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700;
-      box-shadow: inset 0 0 0 1px rgba(40,45,60,.05); }
-    .bmn { flex: 1; min-width: 0; }
-    /* Real benefit names run long ("$300 Digital Entertainment Credit"), so the
-       name flows and wraps freely; the period / multi-card tags sit on their
-       own line below it (a consistent spot regardless of name length). */
-    .btitle { line-height: 1.35; }
-    .bname { font-size: var(--fs-title); font-weight: 700; color: var(--ink);
-      letter-spacing: -.1px; }
-    .btags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
-      margin-top: 4px; }
-    .bp { font-size: 10px; color: var(--fog); border: 1px solid var(--line);
-      border-radius: 4px; padding: 0 4px; white-space: nowrap; }
-    .bx { font-size: 10px; font-weight: 700; color: var(--bluesoft);
-      background: rgba(0,111,207,.07); border-radius: 4px; padding: 0 5px;
+    /* Period group header (每月/每季/每半年/每年 · badge · N 项 · $X 待用).
+       Cadence lives here, never as per-row chips. */
+    .bgh { display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 0 20px; margin-top: 16px; }
+    .bgh-l { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .bgh-lbl { font-size: 11px; font-weight: 700; color: var(--sub);
+      letter-spacing: .4px; white-space: nowrap; }
+    .bgh-badge { font-size: var(--fs-caption); font-weight: 600; color: var(--sub);
+      background: var(--surface-count); border-radius: 5px; padding: 2px 7px;
       white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .bcard { font-size: var(--fs-body); color: var(--sub2); margin-top: 1px;
+    .bgh-badge.amber { font-weight: 700; color: var(--amber);
+      background: var(--amber-tint); }
+    .bgh-sum { font-size: 11px; color: var(--text-5); white-space: nowrap;
+      font-variant-numeric: tabular-nums; }
+    .blist { display: flex; flex-direction: column; gap: 8px;
+      padding: 9px 16px 0; }
+    .bgrp { background: #fff; border: 1px solid var(--line);
+      border-radius: var(--r-row); corner-shape: var(--se);
+      box-shadow: var(--shadow-card); overflow: hidden; }
+    .bgrp.exp { border-color: var(--border-expanded); }
+    /* Fully-used benefit: the whole card archives to a faint-green, low-noise
+       row (the three-state "done" treatment). */
+    .bgrp.done { background: var(--green-row); border-color: var(--green-row-border);
+      box-shadow: none; }
+    .brow { display: flex; gap: 12px; padding: 12px 15px; align-items: center; }
+    .bmn { flex: 1; min-width: 0; }
+    /* The left icon slot is gone (design judged the initials square as zero
+       information), so the name takes the full width. */
+    .bname { font-size: var(--fs-title); font-weight: 700; color: var(--ink);
+      letter-spacing: -.1px; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .bgrp.done .bname { color: var(--archived-text); }
+    .bcard { font-size: var(--fs-body); color: var(--text-4); margin-top: 2px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       font-variant-numeric: tabular-nums; }
-    .bbar { display: none; }
+    .bgrp.done .bcard { color: var(--archived-sub); }
     .brt { text-align: right; flex: none; }
     .bamt { font-size: var(--fs-amount); font-weight: 700; color: var(--ink);
       font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bamt.done { color: var(--green); }
     .bamt .of { font-size: var(--fs-caption); font-weight: 400; color: var(--fog); }
-    .bdays { font-size: var(--fs-caption); color: var(--fog); margin-top: 2px;
-      font-variant-numeric: tabular-nums; }
-    .bdays.urgent { font-weight: 700; color: var(--red); }
-    .bcaret { font-size: 10px; color: var(--fog); flex: none; align-self: center; }
-    .binact { font-size: var(--fs-sub); font-weight: 700; color: var(--amber); }
-    .bwhen { font-size: var(--fs-caption); color: var(--fog); margin-top: 2px;
-      font-variant-numeric: tabular-nums; }
-    .bactivate { border: 1px solid #E2E5EA; border-radius: 9px;
+    .bamt.done .of { color: var(--archived-sub); }
+    .bstat { font-size: var(--fs-caption); color: var(--text-4); margin-top: 2px; }
+    .bstat.used, .bstat.done { font-weight: 700; color: var(--green); }
+    /* Micro progress bar — the ONLY progress bar in the whole list, shown just
+       for partial use (0 < pct < 100). */
+    .bmicro { height: 3px; border-radius: 1.5px; background: var(--track);
+      overflow: hidden; margin: 9px 15px 12px; }
+    .bmicro > div { height: 100%; border-radius: 1.5px; background: var(--green); }
+    .bgrp.part .brow { padding-bottom: 0; }
+    .binact { font-size: var(--fs-sub); font-weight: 700; color: var(--amber);
+      flex: none; }
+    .bactivate { border: 1px solid var(--border-1); border-radius: 9px;
       corner-shape: var(--se); padding: 6px 11px; font-size: var(--fs-sub);
       font-weight: 700; color: var(--blue); cursor: pointer; white-space: nowrap;
       flex: none; transition: background .15s ease; }
-    .bactivate:hover { background: #F7F8FA; }
-    .bsub { margin: 0 14px 12px 65px; display: flex; flex-direction: column;
-      gap: 6px; }
+    .bactivate:hover { background: var(--hover-on-white); }
+    /* Per-card breakdown (multi-card expand): full-width sunken strip, no bars. */
+    .bsub { border-top: 1px solid var(--border-inner);
+      background: var(--surface-sunken); padding: 9px 15px; display: flex;
+      flex-direction: column; gap: 7px; }
     .bsubrow { display: flex; align-items: center; gap: 9px; }
-    .bsubcard { font-size: var(--fs-body); color: var(--ink); width: 56px;
-      flex: none; font-variant-numeric: tabular-nums; }
-    .bbar.grow { display: block; flex: 1; height: 3px; border-radius: 1.5px;
-      background: #E7EAEF; overflow: hidden; margin: 0; }
-    .bbar.grow > div { height: 100%; background: var(--green); }
-    .bsubamt { font-size: var(--fs-sub); color: var(--sub); width: 74px;
-      text-align: right; flex: none; font-variant-numeric: tabular-nums; }
-    .bdone { display: flex; flex-direction: column; gap: 8px;
-      padding: 8px 16px 0; }
-    .bsec { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-      background: #fff; border: 1px solid var(--line);
-      border-radius: 12px; corner-shape: var(--se); cursor: pointer;
-      opacity: .75; }
-    .bsec .sp { flex: 1; }
-    .bsec-t { font-size: 12px; font-weight: 600; color: var(--sub);
+    .bsw { width: 26px; height: 17px; border-radius: 3.5px; flex: none;
+      overflow: hidden; background: var(--card-silver); }
+    .bsw img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .bsubcard { font-size: var(--fs-sub); color: var(--ink); flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums; }
+    .bsubamt { font-size: var(--fs-sub); color: var(--text-4); flex: none;
+      white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .bsubamt.done { font-weight: 700; color: var(--green); }
+    /* Collapsible "无法自动追踪" footer — de-emphasized, never competes with
+       real benefit rows. */
+    .buntrack-wrap { display: flex; flex-direction: column; gap: 8px;
+      padding: 14px 16px 0; }
+    .buntrack { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      corner-shape: var(--se); cursor: pointer; opacity: .8; }
+    .buntrack-t { font-size: var(--fs-body); font-weight: 600; color: var(--sub);
       white-space: nowrap; }
-    .bsec-n { font-size: var(--fs-sub); color: var(--fog); background: #EEF0F3;
-      border-radius: 9px; padding: 1px 8px; font-variant-numeric: tabular-nums;
-      white-space: nowrap; }
-    .bsec-hint { font-size: var(--fs-caption); color: var(--fog); overflow: hidden;
-      text-overflow: ellipsis; white-space: nowrap; }
+    .buntrack-n { font-size: var(--fs-sub); color: var(--text-5);
+      background: var(--surface-count); border-radius: 9px; padding: 1px 8px;
+      white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .buntrack-h { flex: 1; font-size: var(--fs-caption); color: var(--text-5);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .buntrack-c { flex: none; font-size: 10px; color: var(--text-5); }
+    .buntrack-item { display: flex; align-items: center; gap: 9px;
+      padding: 9px 14px; background: #fff; border: 1px solid var(--line);
+      border-radius: 10px; corner-shape: var(--se); opacity: .8; }
+    .buntrack-name { flex: 1; min-width: 0; font-size: var(--fs-body);
+      color: var(--sub); white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; }
+    .buntrack-card { flex: none; font-size: var(--fs-caption); color: var(--text-5);
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
     .bfoot { padding: 12px 20px 14px; flex: none; background: var(--panel);
       border-top: 1px solid var(--bd); }
 
@@ -3536,6 +3714,7 @@
       });
       state.benefits = buildBenefitIndex(benefits);
       state.benefitStats = benefitStats(state.benefits, state.cards);
+      state.benefitsUntrackable = benefits.untrackable || [];
       state.benefitsReadAt = Date.now();
       state.benefitsLoaded = true;
     } catch (error) {
@@ -4390,6 +4569,11 @@
     };
     body.append(el('div', {class: 'sr'}, search));
 
+    // Card-filter chips (same component as the offers tabs) sit above the
+    // stats, per 13a; selecting a single card narrows both the stats and list.
+    const chips = renderBenefitCardChips();
+    if (chips) body.append(chips);
+
     body.append(renderBenefitStats());
 
     body.append(el('div', {id: 'bbody'}));
@@ -4401,8 +4585,47 @@
   }
 
   /**
-   * Renders the filtered benefit list into `#bbody` (without touching the
-   * search box / stats / toolbar), so typing in search keeps focus.
+   * The Benefits tab's card-filter chip row: navy "all" pill + one swatch chip
+   * per card that actually carries a benefit, bound to state.benefitCardFilter.
+   * No dashed "只看多卡" chip (that one is addable-only). Returns null when
+   * there is at most one card (a lone "全部卡" chip would be pointless).
+   * @return {?Element} The chip row, or null.
+   */
+  function renderBenefitCardChips() {
+    const tokens = new Set();
+    for (const g of state.benefits) {
+      for (const e of g.entries) tokens.add(e.token);
+    }
+    const cards = state.cards.filter((c) => tokens.has(c.token));
+    if (cards.length <= 1) return null;
+    const row = el('div', {class: 'cfrow'});
+    const add = (key, label, swToken) => {
+      const chip = el('div',
+        {class: state.benefitCardFilter === key ? 'cfil on' : 'cfil'});
+      if (swToken != null) {
+        const sw = el('span', {class: 'cfsw'});
+        const cd = cardOf(swToken);
+        if (cd?.art) sw.append(el('img', {src: cd.art, alt: ''}));
+        else sw.style.background = swatchStyle(swToken);
+        chip.append(sw);
+      }
+      chip.append(document.createTextNode(label));
+      chip.onclick = () => {
+        state.benefitCardFilter = key;
+        render();
+      };
+      row.append(chip);
+    };
+    add('all', t('allCards'));
+    for (const card of cards) add(card.token, `…${card.digits}`, card.token);
+    return row;
+  }
+
+  /**
+   * Renders the grouped benefit list into `#bbody` (without touching the search
+   * box / chips / stats), so typing in search keeps focus. Groups by reset
+   * cadence with a header per period, then the de-emphasized "无法自动追踪"
+   * footer.
    * @param {!Element} body The benefits body element.
    */
   function renderBenefitBody(body) {
@@ -4410,31 +4633,59 @@
     if (!bbody) return;
     bbody.textContent = '';
     const q = state.benefitQuery.trim().toLowerCase();
-    const match = (g) => matchesBenefitQuery(g, q);
-    const active = state.benefits.filter((g) => !g.fullyUsed && match(g));
-    const used = state.benefits.filter((g) => g.fullyUsed && match(g));
-    const shown = state.benefitUnusedOnly ? active :
-      state.benefits.filter(match);
-    const list = el('div', {class: 'blist'});
-    for (const g of shown) list.append(renderBenefitRow(g));
-    if (shown.length === 0) {
+    const cf = state.benefitCardFilter;
+    const single = cf !== 'all';
+    let groups = state.benefits.filter((g) => matchesBenefitQuery(g, q));
+    // A single-card filter narrows each group to just that card's entry and
+    // recomputes its totals (so the row reads as that one card).
+    if (single) {
+      const now = Date.now();
+      groups = groups
+        .filter((g) => g.entries.some((e) => e.token === cf))
+        .map((g) => finalizeBenefitGroup(
+          {...g, entries: g.entries.filter((e) => e.token === cf)}, now));
+    }
+    const sections = buildBenefitPeriodGroups(groups);
+    for (const pg of sections) {
+      bbody.append(renderBenefitPeriodHeader(pg));
+      const list = el('div', {class: 'blist'});
+      for (const g of pg.groups) list.append(renderBenefitRow(g));
+      bbody.append(list);
+    }
+    if (!sections.length) {
       const text = q ?
         t('noBenefitsMatch', {q: state.benefitQuery.trim()}) :
         t('noBenefits');
-      list.append(el('div', {class: 'msg', style: 'padding:24px'},
+      bbody.append(el('div', {class: 'msg', style: 'padding:24px'},
         el('div', {class: 'note', text})));
     }
-    bbody.append(list);
-
-    if (state.benefitUnusedOnly && used.length) {
-      bbody.append(renderBenefitDoneSection(used));
-    }
+    const untrack = state.benefitsUntrackable.filter((u) =>
+      (!single || u.token === cf) && (!q || u.name.toLowerCase().includes(q)));
+    if (untrack.length) bbody.append(renderBenefitUntrackable(untrack));
   }
 
-  /** @return {!Element} The three-stat header bar. */
+  /**
+   * @param {!Object} pg A period section from {@link buildBenefitPeriodGroups}.
+   * @return {!Element} The period group header (label · badge · summary).
+   */
+  function renderBenefitPeriodHeader(pg) {
+    const left = el('div', {class: 'bgh-l'},
+      el('span', {class: 'bgh-lbl', text: t(`periodEvery_${pg.period}`)}));
+    if (Number.isFinite(pg.daysLeft)) {
+      const amber = benefitPeriodTone(pg.period, pg.daysLeft) === 'amber';
+      left.append(el('span', {class: amber ? 'bgh-badge amber' : 'bgh-badge',
+        text: daysLabel(pg.daysLeft)}));
+    }
+    const sumKey = pg.activation ? 'benefitPendingActivate' : 'benefitPending';
+    const sum = el('div', {class: 'bgh-sum',
+      text: t(sumKey, {n: pg.count, amt: fmtMoney(pg.amount)})});
+    return el('div', {class: 'bgh'}, left, sum);
+  }
+
+  /** @return {!Element} The three-stat header bar (follows the card filter). */
   function renderBenefitStats() {
-    const s = state.benefitStats ||
-        {thisMonthUnused: 0, redeemedYtd: 0, annualFee: 0, paybackPct: 0};
+    const s = benefitStats(state.benefits, state.cards, Date.now(),
+      state.benefitCardFilter);
     const tile = (valCls, value, label, sub) => {
       const c = el('div', {class: 'c'});
       c.append(el('div', {class: `bval ${valCls}`, text: value}));
@@ -4456,124 +4707,156 @@
   }
 
   /**
-   * @param {!Array<!Object>} used Fully-used benefit groups.
-   * @return {!Element} The collapsible "已用完" section.
+   * Subtitle line under a benefit name: a single-card row shows "卡名 ⋯尾号";
+   * a multi-card row shows the collapsed summary "N 张卡 · 各 $X" (or "共 $X"
+   * when the per-card amounts differ).
+   * @param {!Object} group A benefit group.
+   * @return {string} The subtitle text.
    */
-  function renderBenefitDoneSection(used) {
-    const wrap = el('div', {class: 'bdone'});
-    const head = el('div', {class: 'bsec'});
-    head.append(el('span', {class: 'bsec-t', text: t('usedUpSection')}));
-    head.append(el('span', {class: 'bsec-n', text: String(used.length)}));
-    head.append(el('div', {class: 'sp'}));
-    head.append(el('span', {class: 'caret',
-      text: state.benefitDoneOpen ? '▴' : '▾'}));
-    head.onclick = () => {
-      state.benefitDoneOpen = !state.benefitDoneOpen;
-      render();
-    };
-    wrap.append(head);
-    if (state.benefitDoneOpen) {
-      for (const g of used) wrap.append(renderBenefitRow(g));
+  function benefitRowSubtitle(group) {
+    if (group.entries.length <= 1) {
+      const e = group.entries[0];
+      return e ? `${e.family} …${e.digits}` : '';
     }
-    return wrap;
+    const n = group.entries.length;
+    const first = group.entries[0].target;
+    const uniform = group.entries.every((e) => e.target === first);
+    return uniform ?
+      t('xCardsEach', {n, amt: fmtMoney(first, group.symbol)}) :
+      t('xCardsTotal', {n, amt: fmtMoney(group.target, group.symbol)});
   }
 
   /**
+   * One benefit row in the three-state language: unused (plain), partial
+   * (green % + the list's only micro-bar), or done (faint-green archived row).
+   * No left icon slot. Multi-card rows expand to a per-card breakdown.
    * @param {!Object} group A benefit group.
-   * @return {!Element} One benefit row (expandable when multi-card).
+   * @return {!Element} The row.
    */
   function renderBenefitRow(group) {
-    const [bg, fg] = logoColors(group.name);
-    const logo = el('div', {class: 'blogo',
-      style: `background:${bg};color:${fg}`,
-      text: benefitInitials(group.name)});
-    const title = el('div', {class: 'btitle'},
-      el('span', {class: 'bname', text: group.name}));
-    // Period / multi-card tags always sit on their own line below the name, so
-    // they land in a consistent place no matter how long the name is (long
-    // names would otherwise push them onto a second line inconsistently).
-    const tags = el('div', {class: 'btags'});
-    if (group.period) {
-      tags.append(el('span', {class: 'bp', text: periodText(group.period)}));
-    }
-    if (group.multiCard) {
-      tags.append(el('span', {class: 'bx',
-        text: t('xCards', {n: group.entries.length})}));
-    }
-    const hasTags = tags.children.length > 0;
+    const title = el('div', {class: 'bname', text: group.name});
 
-    // Not-yet-activated benefit (e.g. CLEAR Plus): single flat row + 去激活 CTA,
-    // with the card name as a subtitle (no per-card breakdown).
+    // Not-yet-activated benefit (e.g. CLEAR Plus): amber "未激活" + 去激活 CTA,
+    // with the card name + credit as a subtitle (no per-card breakdown).
     if (isInactiveBenefit(group)) {
       const cardText = group.entries
         .map((e) => `${e.family} …${e.digits}`).join(' · ');
-      const mn = el('div', {class: 'bmn'}, title);
-      if (hasTags) mn.append(tags);
-      mn.append(el('div', {class: 'bcard', text: cardText}));
-      const rt = el('div', {class: 'brt'},
-        el('div', {class: 'binact', text: t('notActivated')}),
-        el('div', {class: 'bwhen',
-          text: `${fmtMoney(group.target, group.symbol)} / ` +
-            `${periodText(group.period || 'year')}`}));
+      const sub = `${cardText} · ${fmtMoney(group.target, group.symbol)}/` +
+        `${periodText(group.period || 'year')}`;
+      const mn = el('div', {class: 'bmn'}, title,
+        el('div', {class: 'bcard', text: sub}));
       const btn = el('div', {class: 'bactivate', text: t('activate'),
         onclick: () => window.open(
           'https://global.americanexpress.com/card-benefits/view-all',
           '_blank')});
       return el('div', {class: 'bgrp'},
-        el('div', {class: 'brow flat'}, logo, mn, rt, btn));
+        el('div', {class: 'brow'}, mn,
+          el('span', {class: 'binact', text: t('notActivated')}), btn));
     }
 
-    const mn = el('div', {class: 'bmn'}, title);
-    if (hasTags) mn.append(tags);
-    const urgent = Number.isFinite(group.daysLeft) && group.daysLeft <= 7;
-    const rt = el('div', {class: 'brt'},
-      el('div', {class: 'bamt'},
-        `${fmtMoney(group.spent, group.symbol)} `,
-        el('span', {class: 'of',
-          text: `/ ${fmtMoney(group.target, group.symbol)}`})),
-      el('div', {class: urgent ? 'bdays urgent' : 'bdays',
-        text: daysLabel(group.daysLeft)}));
+    const done = group.fullyUsed;
+    const pct = group.target > 0 ?
+      Math.min(100, Math.round(group.spent / group.target * 100)) : 0;
+    const partial = !done && group.spent > 0 && group.target > 0;
+    const expandable = group.entries.length > 1;
+    const expanded = expandable && state.benefitsExpanded.has(group.key);
+    const showMicro = partial && !expanded;
 
-    // Every credit benefit (single- or multi-card) is collapsible: the per-card
-    // breakdown is hidden by default — a benefit spanning many cards (e.g. a
-    // dozen business cards) would make an always-open list enormous — and the
-    // whole row toggles it open.
-    const expanded = state.benefitsExpanded.has(group.key);
-    const row = el('div',
-      {class: expanded ? 'brow' : 'brow flat', style: 'cursor:pointer'},
-      logo, mn, rt,
-      el('span', {class: 'bcaret', text: expanded ? '▴' : '▾'}));
-    row.onclick = () => {
-      if (expanded) state.benefitsExpanded.delete(group.key);
-      else state.benefitsExpanded.add(group.key);
-      render();
-    };
-    const wrap = el('div', {class: 'bgrp'});
+    const mn = el('div', {class: 'bmn'}, title,
+      el('div', {class: 'bcard', text: benefitRowSubtitle(group)}));
+
+    let statusCls = 'bstat';
+    let statusText = t('notUsed');
+    if (done) {
+      statusCls = 'bstat done';
+      statusText = t('usedUp');
+    } else if (partial) {
+      statusCls = 'bstat used';
+      statusText = t('usedPct', {n: pct});
+    }
+    if (expandable) statusText += expanded ? ' ▴' : ' ▾';
+
+    const amt = el('div', {class: done ? 'bamt done' : 'bamt'});
+    amt.append(`${done ? '✓ ' : ''}${fmtMoney(group.spent, group.symbol)} `);
+    amt.append(el('span', {class: 'of',
+      text: `/ ${fmtMoney(group.target, group.symbol)}`}));
+    const rt = el('div', {class: 'brt'}, amt,
+      el('div', {class: statusCls, text: statusText}));
+
+    const row = el('div', {class: 'brow'}, mn, rt);
+    let cls = 'bgrp';
+    if (done) cls += ' done';
+    else if (showMicro) cls += ' part';
+    if (expanded) cls += ' exp';
+    const wrap = el('div', {class: cls});
+    if (expandable) {
+      row.style.cursor = 'pointer';
+      row.onclick = () => {
+        if (expanded) state.benefitsExpanded.delete(group.key);
+        else state.benefitsExpanded.add(group.key);
+        render();
+      };
+    }
     wrap.append(row);
+    if (showMicro) {
+      wrap.append(el('div', {class: 'bmicro'},
+        el('div', {style: `width:${pct}%`})));
+    }
     if (expanded) wrap.append(renderBenefitBreakdown(group));
     return wrap;
   }
 
   /**
    * @param {!Object} group A benefit group.
-   * @return {!Element} Per-card breakdown rows (card-art thumbnail + progress).
+   * @return {!Element} Per-card breakdown rows (swatch + card + amount). A card
+   *     that has fully used its share shows a green "✓ $y"; no progress bars.
    */
   function renderBenefitBreakdown(group) {
     const box = el('div', {class: 'bsub'});
     for (const e of group.entries) {
-      const pct = e.target > 0 ?
-        Math.min(100, Math.round(e.spent / e.target * 100)) : 0;
-      const sw = el('span', {class: 'sw'});
+      const eDone = e.target > 0 && e.spent >= e.target;
+      const sw = el('span', {class: 'bsw'});
       if (e.art) sw.append(el('img', {src: e.art, alt: ''}));
       else sw.style.background = swatchStyle(e.token);
+      const amtText = eDone ?
+        `✓ ${fmtMoney(e.spent, e.symbol)}` :
+        `${fmtMoney(e.spent, e.symbol)} / ${fmtMoney(e.target, e.symbol)}`;
       box.append(el('div', {class: 'bsubrow'}, sw,
-        el('span', {class: 'bsubcard', text: `…${e.digits}`}),
-        el('div', {class: 'bbar grow'}, el('div', {style: `width:${pct}%`})),
-        el('span', {class: 'bsubamt',
-          text: `${fmtMoney(e.spent, e.symbol)} / ` +
-            `${fmtMoney(e.target, e.symbol)}`})));
+        el('span', {class: 'bsubcard', text: `${e.family} …${e.digits}`}),
+        el('span', {class: eDone ? 'bsubamt done' : 'bsubamt',
+          text: amtText})));
     }
     return box;
+  }
+
+  /**
+   * The de-emphasized, collapsible "无法自动追踪" footer row. Collapsed it
+   * shows a count + a sample name; expanded it lists every untrackable perk.
+   * @param {!Array<!Object>} items Untrackable items for the current filter.
+   * @return {!Element} The footer.
+   */
+  function renderBenefitUntrackable(items) {
+    const wrap = el('div', {class: 'buntrack-wrap'});
+    const open = state.benefitsUntrackableOpen;
+    const head = el('div', {class: 'buntrack'},
+      el('span', {class: 'buntrack-t', text: t('untrackable')}),
+      el('span', {class: 'buntrack-n', text: String(items.length)}),
+      el('span', {class: 'buntrack-h', text: items[0] ? items[0].name : ''}),
+      el('span', {class: 'buntrack-c', text: open ? '▴' : '▾'}));
+    head.onclick = () => {
+      state.benefitsUntrackableOpen = !state.benefitsUntrackableOpen;
+      render();
+    };
+    wrap.append(head);
+    if (open) {
+      for (const it of items) {
+        wrap.append(el('div', {class: 'buntrack-item'},
+          el('span', {class: 'buntrack-name', text: it.name}),
+          el('span', {class: 'buntrack-card',
+            text: `${it.family} …${it.digits}`})));
+      }
+    }
+    return wrap;
   }
 
   /** @param {!Element} shell Panel content root. */
