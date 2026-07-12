@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;padding:32px;background:#f0eee9;font-family:'Public Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.6);margin:8px 0}
+.dv-opt{display:flex;flex-direction:column;gap:12px}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.cap{font:600 11px system-ui,sans-serif;color:rgba(0,0,0,.45);margin:0 0 8px}</style>
+</head><body>
+<section class="dv-turn" id="handoff">
+<div class="dv-thd"><span class="dv-tid" style="background:#0B1F4E;color:#fff">交接</span><span class="dv-tname">给实现方(Claude Code)的说明 — 本文档状态:与 repo olddonkey/amex-assistant v1.3.0 已双向同步;除下方清单外,所有 mock 均为已落地实现的像素基准(仅作参照,勿重复实现)</span></div>
+<div class="dv-olabel" style="display:block;max-width:980px;line-height:1.9">
+<b>本轮待实现清单(设计已定稿,代码未动;事实来源冲突时以 src/amex-assistant.user.js + design/v2/落地修订-v1.2.md 为准):</b><br />
+① <a href="#17a">17a</a> EN 到期词条:en.daysLeft「Days remaining: {n}」→「Days left: {n}」(zh 不动);.cw-exp 到期列 80→96px(双语)。<br />
+② <a href="#17b">17b</a> Benefits 宽模式卡 chips 永远带金额:「$0 / $x / ✓ $y」;已加页 chips 保持无金额,两 tab 词汇表分开。<br />
+③ <a href="#17c">17c</a> 限流提示:词表 confirmThrottle 阈值 30→80,琥珀警示条降级为 confirm 内灰色说明文字,文案改「本轮添加次数较多，如遇限流本轮会自动停止，未提交项可稍后重试」;底栏不加任何警示。响应式熔断(429/403 即停)不变。<br />
+④ <a href="#16a">16a</a> 宽模式 chips 展开后 .cw-exp 到期列加 align-self:flex-start(顶对齐,防基线漂移)。<br />
+⑤ <a href="#16d">16d</a> 文字灰阶收敛:承载数据的信息性小字(到期日/金额分母/入账日期/小注)统一 #6A6F7A;#8A8F99/#9CA1AB 仅限占位符与装饰符号。改 PANEL_STYLE 变量区一处生效。<br />
+⑥ <a href="#12a">12a</a>(t17 注)宽模式统计卡数字 span 定宽:min-width:5.5ch + 右对齐 + tabular-nums,防单卡过滤重排。<br />
+<b>硬约束(不可违背):</b>执行文案不得描述串行/随机延迟/排队等待;同一 offer 的多卡表述为「同时提交」(confirm 承载);不得夸大为全部请求一次并发;计数用「已选 {n} 个 offer · 共 {m} 次添加」(footerSelected 单 key 两密度共用)。字体栈 'Public Sans','PingFang SC','Microsoft YaHei',system-ui,严禁引入 Google Fonts。<br />
+<b>其余实现事实(已落地,mock 未画,勿回退):</b>宽模式可拖拽、两密度各自记忆位置(amexAssistantPos:panelWide/:panel)、密度持久化(amexAssistantDensity)、&lt;940px 自动回落边栏;宽模式按卡分组/单卡过滤行用单卡状态词、表头「状态」;「按类目分组」为运行时字段探测,无数据时隐藏;「接口变更」错误屏与 13a 已删的「未归类返现」行均为设计保留、未实现。
+</div>
+</section>
+</body></html>

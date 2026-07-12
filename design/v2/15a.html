@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;padding:32px;background:#f0eee9;font-family:'Public Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.6);margin:8px 0}
+.dv-opt{display:flex;flex-direction:column;gap:12px}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.cap{font:600 11px system-ui,sans-serif;color:rgba(0,0,0,.45);margin:0 0 8px}</style>
+</head><body>
+<div class="dv-opt" id="15a">
+  <div class="dv-olabel"><a class="dv-oid" href="#15a">15a</a>宽模式 · 执行中 — 一行一个 offer,各卡 chips 实时从 spinner 翻成 ✓/✗;头部内联计数(提交成功/失败/提交中),进度条按已有结果数走</div>
+  <div style="width:880px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden;font-family:'Public Sans',system-ui,sans-serif">
+    <div style="background:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #EEF0F3">
+      <div style="width:34px;height:34px;border-radius:50%;background:#E5F0FA;display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="width:16px;height:16px;border-radius:50%;border:2.5px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;display:block"></span></div>
+      <div style="flex:1"><div style="font-size:15px;font-weight:800;color:#0B1F4E;letter-spacing:-.2px">正在添加到卡上…</div><div style="font-size:11.5px;color:#8A8F99;margin-top:1px;font-variant-numeric:tabular-nums">正在处理 16 次添加</div></div>
+      <div style="display:flex;gap:14px;margin-right:6px">
+        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#0B7A3E;font-variant-numeric:tabular-nums">9</div><div style="font-size:10.5px;color:#8A8F99">提交成功</div></div>
+        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#C8102E;font-variant-numeric:tabular-nums">1</div><div style="font-size:10.5px;color:#8A8F99">提交失败</div></div>
+        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#006FCF;font-variant-numeric:tabular-nums">6</div><div style="font-size:10.5px;color:#8A8F99">提交中</div></div>
+      </div>
+    </div>
+    <div style="padding:12px 20px 0"><div style="height:4px;border-radius:2px;background:#E7EAEF;overflow:hidden"><div style="width:62%;height:100%;border-radius:2px;background:#006FCF"></div></div></div>
+    <div style="margin:14px 20px 0;display:flex;align-items:center;padding:0 16px 8px;gap:14px;border-bottom:1px solid #E7E9EE">
+      <div style="flex:1;font-size:11.5px;font-weight:600;color:#9CA1AB;letter-spacing:.3px">OFFER</div>
+      <div style="width:560px;font-size:11.5px;font-weight:600;color:#9CA1AB;letter-spacing:.3px">各卡结果</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;padding:8px 20px 14px">
+      <div style="background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:15px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 2px rgba(0,23,90,.04)">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:11px">
+          <div style="width:38px;height:38px;border-radius:9px;corner-shape:superellipse(1.6);background:#E85D00;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">SX</div>
+          <div style="min-width:0"><div style="font-size:14.5px;font-weight:700;color:#1A1E28">Sixt.com - Car Rental</div><div style="font-size:12px;color:#8A8F99;margin-top:1px">8 张卡</div></div>
+        </div>
+        <div style="width:560px;display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0">
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯31004 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯91003 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯41003 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯31009 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯21005 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯41002 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21007 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#C8102E;background:#FBEAEA;border:1px solid #F0D5D2;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21001 ✗</span>
+        </div>
+      </div>
+      <div style="background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:15px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 2px rgba(0,23,90,.04)">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:11px">
+          <div style="width:38px;height:38px;border-radius:9px;corner-shape:superellipse(1.6);background:#1A1E28;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">OK</div>
+          <div style="min-width:0"><div style="font-size:14.5px;font-weight:700;color:#1A1E28">Oakley</div><div style="font-size:12px;color:#8A8F99;margin-top:1px">8 张卡</div></div>
+        </div>
+        <div style="width:560px;display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0">
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯31004 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯91003 ✓</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯41003<span style="width:11px;height:11px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;display:inline-block"></span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯31009<span style="width:11px;height:11px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;display:inline-block"></span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯21005<span style="width:11px;height:11px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;display:inline-block"></span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯41002<span style="width:11px;height:11px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;display:inline-block"></span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21007<span style="width:11px;height:11px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;display:inline-block"></span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21001<span style="width:11px;height:11px;border-radius:50%;border:2px solid #D9E8F8;border-top-color:#006FCF;animation:dvspin .9s linear infinite;display:inline-block"></span></span>
+        </div>
+      </div>
+    </div>
+    <div style="background:#fff;border-top:1px solid #EEF0F3;padding:11px 20px;font-size:11.5px;color:#8A8F99"><b style="color:#9A6A00">请勿关闭本页</b> · 提交完成后重新读取已添加列表，逐卡复查</div>
+  </div>
+  <div class="dv-olabel" style="max-width:880px;display:block">派生规则(实现即此):结构 = <a href="#9d">9d</a> 结果表格(一行一 offer,OFFER ｜ 各卡结果),语义 = 边栏「⑥ 执行中」。未落定的卡 = 灰 chip + 行内 11px spinner;落定即翻 ✓ 绿 / ✗ 红(限流跳过为 ⊘ 琥珀,见 <a href="#15b">15b</a>)。头部蓝圈 spinner + 「正在添加到卡上… · 正在处理 N 次添加」,右侧内联计数 提交成功/提交失败/提交中(有跳过时追加「未提交」琥珀格);进度条 = 已有结果 / 总数。底部通栏「请勿关闭本页」。执行中无任何可点控件——不给中途取消(提交不可撤销,假取消是更大的谎言)。</div>
+</div>
+
+
+</body></html>
