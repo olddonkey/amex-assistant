@@ -28,7 +28,7 @@ test('no catalog entry is empty', () => {
 test('t interpolates params and follows the active language', () => {
   setLanguage('en');
   assert.equal(getLanguage(), 'en');
-  assert.equal(t('daysLeft', {n: 5}), 'Days remaining: 5');
+  assert.equal(t('daysLeft', {n: 5}), 'Days left: 5');
   assert.equal(t('loadingCardN', {done: 2, total: 7}), 'Card 2 / 7');
   setLanguage('zh');
   assert.equal(getLanguage(), 'zh');

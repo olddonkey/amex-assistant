@@ -228,7 +228,7 @@
       // Confirm dialog
       confirmTitle: '提交这 {n} 次添加？',
       confirmSub: '同一个 offer 的目标卡会同时提交；提交后不可撤销。',
-      confirmThrottle: '本轮超过 30 次添加可能触发限流，建议分批提交。',
+      confirmThrottle: '本轮添加次数较多，如遇限流本轮会自动停止，未提交项可稍后重试。',
       confirmCards: '涉及 {n} 张卡',
       confirmMeta: '共 {offers} 个 offer · {adds} 次添加 · 完成后逐卡复查',
       cancel: '取消',
@@ -418,9 +418,9 @@
       confirmTitle: 'Submit these Add to Card requests ({n})?',
       confirmSub: 'For each offer, selected cards are submitted ' +
           'together. This cannot be undone.',
-      confirmThrottle: 'More than 30 Add to Card requests in one run may ' +
-          'trigger rate limits; consider submitting in smaller ' +
-          'batches.',
+      confirmThrottle: 'This run includes a large number of Add to Card ' +
+          'requests. If a rate limit is hit, the run stops ' +
+          'automatically; unsubmitted items can be retried later.',
       confirmCards: 'Cards: {n}',
       confirmMeta: 'Offers: {offers} · Add to Card requests: {adds} · ' +
           'each card checked afterward',
@@ -527,7 +527,7 @@
       notActivated: 'Not activated',
       activate: 'Activate ↗',
       expired: 'Expired',
-      daysLeft: 'Days remaining: {n}',
+      daysLeft: 'Days left: {n}',
       // Added (redeem-tracking) sub-view
       subAddable: 'Eligible',
       subAdded: 'Added',
@@ -2948,7 +2948,7 @@
     .hd .tt { flex: 1; min-width: 0; }
     .t1 { font-size: 15px; font-weight: 800; color: var(--navy);
       letter-spacing: -.2px; }
-    .t2 { font-size: var(--fs-caption); color: var(--mut); margin-top: 1px;
+    .t2 { font-size: var(--fs-caption); color: var(--text-3); margin-top: 1px;
       font-variant-numeric: tabular-nums;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .rf { width: 30px; height: 30px; border-radius: 50%; border: none;
@@ -2979,7 +2979,7 @@
       cursor: pointer; white-space: nowrap; }
     .lastrun { display: flex; align-items: center; gap: 5px; padding: 8px 20px;
       background: #fff; border-bottom: 1px solid var(--line2);
-      font-size: var(--fs-sub); color: var(--mut); font-variant-numeric: tabular-nums; }
+      font-size: var(--fs-sub); color: var(--text-3); font-variant-numeric: tabular-nums; }
     .lastrun .sp { flex: 1; }
     .lastrun b { font-weight: 700; }
 
@@ -3035,12 +3035,12 @@
     /* ---- list header: count + select-all / clear (two states) ---- */
     .lh { display: flex; align-items: center; justify-content: space-between;
       padding: 14px 20px 0; }
-    .lh-l { font-size: var(--fs-sub); font-weight: 600; color: var(--text-4);
+    .lh-l { font-size: var(--fs-sub); font-weight: 600; color: var(--text-3);
       letter-spacing: .2px; font-variant-numeric: tabular-nums; }
     .lh-l.sel { font-weight: 700; color: var(--navy); }
     .lh-a { font-size: var(--fs-body); font-weight: 700; color: var(--amex-blue);
       cursor: pointer; white-space: nowrap; }
-    .lh-a.mut { font-weight: 600; color: var(--text-4); }
+    .lh-a.mut { font-weight: 600; color: var(--text-3); }
 
     /* ---- offer list: each group is its own white card ---- */
     .list { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 0; }
@@ -3078,7 +3078,7 @@
       border-radius: 11px; padding: 3px 9px; white-space: nowrap; cursor: pointer;
       font-variant-numeric: tabular-nums; }
     .bd .dot, .bd .en, .bd .car { color: inherit; }
-    .ex { font-size: var(--fs-caption); color: var(--fog); margin-top: 4px;
+    .ex { font-size: var(--fs-caption); color: var(--text-3); margin-top: 4px;
       font-variant-numeric: tabular-nums; }
     .runbadge { display: inline-flex; gap: 6px; font-size: var(--fs-sub); font-weight: 700;
       font-variant-numeric: tabular-nums; margin-bottom: 3px; }
@@ -3088,7 +3088,7 @@
     .cards { margin: 0 14px 12px 65px; display: flex; flex-direction: column;
       gap: 2px; background: #F7F9FC; border: 1px solid #EDF2F9;
       border-radius: 8px; corner-shape: var(--se); padding: 10px 12px; }
-    .cards .lb { font-size: 9.5px; font-weight: 800; color: var(--fog);
+    .cards .lb { font-size: 9.5px; font-weight: 800; color: var(--text-3);
       letter-spacing: .7px; padding-bottom: 5px; }
     .ccard { display: flex; align-items: center; gap: 9px; font-size: 12px;
       color: var(--ink); padding: 4px 0; cursor: pointer;
@@ -3101,7 +3101,7 @@
     .ccard .mk.en { color: var(--green); }
     .ccard .mk.r-failed { color: var(--red); }
     .ccard .mk.r-ghost { color: var(--amber); }
-    .ccard .mk.r-unverified { color: var(--mut); }
+    .ccard .mk.r-unverified { color: var(--text-3); }
     .ccard .mk.r-skipped { color: var(--amber); }
     input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--blue);
       flex: none; }
@@ -3114,7 +3114,7 @@
       border-top: 1px solid var(--border-hairline); }
     /* Idle (nothing selected): a centered grey hint, no button. */
     .ft.idle { justify-content: center; padding: 11px 16px; }
-    .ft.idle .sm { flex: none; text-align: center; color: var(--text-5); }
+    .ft.idle .sm { flex: none; text-align: center; color: var(--text-3); }
     .ft .sm { flex: 1; font-size: var(--fs-body); color: var(--sub);
       font-variant-numeric: tabular-nums; line-height: 1.4; }
     .ft .sm b { color: var(--ink); }
@@ -3143,7 +3143,7 @@
     .bar { height: 4px; border-radius: 2px; background: #E7EAEF; overflow: hidden; }
     .bar > div { height: 100%; border-radius: 2px; background: var(--blue);
       transition: width .2s; }
-    .note { font-size: var(--fs-caption); color: var(--fog); line-height: 1.5; }
+    .note { font-size: var(--fs-caption); color: var(--text-3); line-height: 1.5; }
 
     /* ---- info / explainer cards ---- */
     .info { margin: 12px 16px 0; background: var(--amberbg);
@@ -3155,7 +3155,7 @@
     /* ---- grouped result list ---- */
     .reslist { margin: 12px 16px 0; background: #fff; border: 1px solid var(--line);
       border-radius: var(--r-item); corner-shape: var(--se); overflow: hidden; }
-    .sh { font-size: 10px; font-weight: 800; color: var(--fog);
+    .sh { font-size: 10px; font-weight: 800; color: var(--text-3);
       letter-spacing: .7px; padding: 11px 14px 5px; }
     .si { display: flex; justify-content: space-between; gap: 8px;
       padding: 7px 14px; align-items: baseline;
@@ -3190,7 +3190,7 @@
     .msg .cir.warn { background: var(--amberbg); color: var(--amber);
       font-weight: 800; font-size: 18px; }
     .msg .h { font-size: 13.5px; font-weight: 700; color: var(--ink); }
-    .msg .txt { font-size: 12px; color: var(--mut); margin-top: 5px;
+    .msg .txt { font-size: 12px; color: var(--text-3); margin-top: 5px;
       line-height: 1.6; }
     .msg .btn { display: inline-flex; align-items: center; gap: 6px;
       margin-top: 16px; border: 1px solid #E2E5EA; border-radius: var(--r-btn);
@@ -3228,7 +3228,7 @@
     .trust-b b { color: var(--ink); }
     .trust .go { display: block; width: 100%; text-align: center;
       margin-top: 20px; padding: 12px 0; }
-    .trust-foot { font-size: var(--fs-caption); color: var(--fog); text-align: center;
+    .trust-foot { font-size: var(--fs-caption); color: var(--text-3); text-align: center;
       margin-top: 10px; }
     .trust-langs { display: flex; gap: 10px; justify-content: center;
       margin-top: 14px; }
@@ -3265,7 +3265,7 @@
     .cf-hd { padding: 18px 20px 0; }
     .cf-t { font-size: 15px; font-weight: 800; color: var(--navy);
       letter-spacing: -.2px; }
-    .cf-d { font-size: var(--fs-body); color: var(--mut); line-height: 1.55;
+    .cf-d { font-size: var(--fs-body); color: var(--text-3); line-height: 1.55;
       margin-top: 4px; }
     .cf-list { margin: 14px 20px 0; border: 1px solid var(--line);
       border-radius: 8px; corner-shape: var(--se);
@@ -3280,10 +3280,8 @@
       white-space: nowrap; }
     .cf-meta { padding: 8px 20px 0; font-size: var(--fs-sub); color: var(--fog);
       font-variant-numeric: tabular-nums; }
-    .cf-warn { margin: 8px 20px 0; background: var(--amberbg);
-      border: 1px solid var(--amberbd); border-radius: 8px; corner-shape: var(--se);
-      padding: 7px 11px; font-size: var(--fs-caption); color: var(--ambertx);
-      line-height: 1.5; }
+    .cf-note { padding: 5px 20px 0; font-size: var(--fs-caption);
+      color: var(--text-3); line-height: 1.5; }
     .cf-btns { display: flex; gap: 10px; padding: 14px 20px 18px;
       justify-content: flex-end; }
     .cf-cancel { border: 1px solid #E2E5EA; color: var(--sub); font-size: var(--fs-amount);
@@ -3306,7 +3304,7 @@
     .bval.green { color: var(--green); }
     .bval.ink { color: var(--ink); }
     .blbl { font-size: var(--fs-caption); color: var(--sub); margin-top: 2px; }
-    .bsub2 { font-size: 9px; color: var(--fog); margin-top: 1px; }
+    .bsub2 { font-size: 9px; color: var(--text-3); margin-top: 1px; }
     /* Period group header (每月/每季/每半年/每年 · badge · N 项 · $X 待用).
        Cadence lives here, never as per-row chips. */
     .bgh { display: flex; align-items: center; justify-content: space-between;
@@ -3319,7 +3317,7 @@
       white-space: nowrap; font-variant-numeric: tabular-nums; }
     .bgh-badge.amber { font-weight: 700; color: var(--amber);
       background: var(--amber-tint); }
-    .bgh-sum { font-size: 11px; color: var(--text-5); white-space: nowrap;
+    .bgh-sum { font-size: 11px; color: var(--text-3); white-space: nowrap;
       font-variant-numeric: tabular-nums; }
     .blist { display: flex; flex-direction: column; gap: 8px;
       padding: 9px 16px 0; }
@@ -3339,7 +3337,7 @@
       letter-spacing: -.1px; white-space: nowrap; overflow: hidden;
       text-overflow: ellipsis; }
     .bgrp.done .bname { color: var(--archived-text); }
-    .bcard { font-size: var(--fs-body); color: var(--text-4); margin-top: 2px;
+    .bcard { font-size: var(--fs-body); color: var(--text-3); margin-top: 2px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       font-variant-numeric: tabular-nums; }
     .bgrp.done .bcard { color: var(--archived-sub); }
@@ -3347,9 +3345,9 @@
     .bamt { font-size: var(--fs-amount); font-weight: 700; color: var(--ink);
       font-variant-numeric: tabular-nums; white-space: nowrap; }
     .bamt.done { color: var(--green); }
-    .bamt .of { font-size: var(--fs-caption); font-weight: 400; color: var(--fog); }
+    .bamt .of { font-size: var(--fs-caption); font-weight: 400; color: var(--text-3); }
     .bamt.done .of { color: var(--archived-sub); }
-    .bstat { font-size: var(--fs-caption); color: var(--text-4); margin-top: 2px; }
+    .bstat { font-size: var(--fs-caption); color: var(--text-3); margin-top: 2px; }
     .bstat.used, .bstat.done { font-weight: 700; color: var(--green); }
     /* Micro progress bar — the ONLY progress bar in the whole list, shown just
        for partial use (0 < pct < 100). */
@@ -3375,7 +3373,7 @@
     .bsubcard { font-size: var(--fs-sub); color: var(--ink); flex: 1; min-width: 0;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       font-variant-numeric: tabular-nums; }
-    .bsubamt { font-size: var(--fs-sub); color: var(--text-4); flex: none;
+    .bsubamt { font-size: var(--fs-sub); color: var(--text-3); flex: none;
       white-space: nowrap; font-variant-numeric: tabular-nums; }
     .bsubamt.done { font-weight: 700; color: var(--green); }
     /* Collapsible "无法自动追踪" footer — de-emphasized, never competes with
@@ -3387,10 +3385,10 @@
       corner-shape: var(--se); cursor: pointer; opacity: .8; }
     .buntrack-t { font-size: var(--fs-body); font-weight: 600; color: var(--sub);
       white-space: nowrap; }
-    .buntrack-n { font-size: var(--fs-sub); color: var(--text-5);
+    .buntrack-n { font-size: var(--fs-sub); color: var(--text-3);
       background: var(--surface-count); border-radius: 9px; padding: 1px 8px;
       white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .buntrack-h { flex: 1; font-size: var(--fs-caption); color: var(--text-5);
+    .buntrack-h { flex: 1; font-size: var(--fs-caption); color: var(--text-3);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .buntrack-c { flex: none; font-size: 10px; color: var(--text-5); }
     .buntrack-item { display: flex; align-items: center; gap: 9px;
@@ -3399,7 +3397,7 @@
     .buntrack-name { flex: 1; min-width: 0; font-size: var(--fs-body);
       color: var(--sub); white-space: nowrap; overflow: hidden;
       text-overflow: ellipsis; }
-    .buntrack-card { flex: none; font-size: var(--fs-caption); color: var(--text-5);
+    .buntrack-card { flex: none; font-size: var(--fs-caption); color: var(--text-3);
       font-variant-numeric: tabular-nums; white-space: nowrap; }
     .bfoot { padding: 12px 20px 14px; flex: none; background: var(--panel);
       border-top: 1px solid var(--bd); }
@@ -3420,16 +3418,16 @@
     .acrow { display: flex; align-items: center; gap: 9px; }
     .acdig { font-size: var(--fs-body); color: var(--ink); width: 56px; flex: none;
       font-variant-numeric: tabular-nums; }
-    .acst { font-size: var(--fs-sub); color: var(--fog); white-space: nowrap; }
+    .acst { font-size: var(--fs-sub); color: var(--text-3); white-space: nowrap; }
     .acst.ok { font-weight: 600; color: var(--green);
       font-variant-numeric: tabular-nums; }
     .acst.urgent { font-weight: 700; color: var(--red);
       font-variant-numeric: tabular-nums; }
-    .aday { font-size: var(--fs-caption); color: var(--fog);
+    .aday { font-size: var(--fs-caption); color: var(--text-3);
       font-variant-numeric: tabular-nums; }
     .aday.urgent { font-weight: 700; color: var(--red); }
     .aday.ok { font-weight: 700; color: var(--green); }
-    .asub { font-size: var(--fs-caption); color: var(--fog); margin-top: 3px;
+    .asub { font-size: var(--fs-caption); color: var(--text-3); margin-top: 3px;
       font-variant-numeric: tabular-nums; }
     .asub.ok { color: var(--green); font-weight: 600; }
 
@@ -3459,9 +3457,9 @@
     .acat { display: flex; align-items: center; justify-content: space-between;
       padding: 0 4px; }
     .acat:not(:first-child) { margin-top: 6px; }
-    .acat .lbl { font-size: var(--fs-sub); font-weight: 600; color: var(--mut);
+    .acat .lbl { font-size: var(--fs-sub); font-weight: 600; color: var(--text-3);
       letter-spacing: .2px; }
-    .acat .cnt { font-size: var(--fs-sub); color: var(--fog);
+    .acat .cnt { font-size: var(--fs-sub); color: var(--text-3);
       font-variant-numeric: tabular-nums; }
 
     /* ---- added view: 按卡 card group (mock state C) ---- */
@@ -3479,7 +3477,7 @@
       font-weight: 700; color: var(--ink); white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis; }
     .acardhd .nm .dg { font-variant-numeric: tabular-nums; }
-    .acardhd .sum { font-size: var(--fs-sub); color: var(--mut); flex: none;
+    .acardhd .sum { font-size: var(--fs-sub); color: var(--text-3); flex: none;
       white-space: nowrap; font-variant-numeric: tabular-nums; }
     .acardhd .sum b { color: var(--green); font-weight: 700; }
     .acardhd .sum b.mut { color: var(--sub); }
@@ -3494,13 +3492,13 @@
     .aomn { flex: 1; min-width: 0; }
     .aonm { font-size: var(--fs-amount); font-weight: 700; color: var(--ink);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .aods { font-size: var(--fs-sub); color: var(--mut); margin-top: 1px;
+    .aods { font-size: var(--fs-sub); color: var(--text-3); margin-top: 1px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .aort { text-align: right; flex: none; }
     .aostat { font-size: var(--fs-sub); font-weight: 700; color: var(--red); }
-    .aostat.gray { font-weight: 400; color: var(--mut); }
+    .aostat.gray { font-weight: 400; color: var(--text-3); }
     .aostat.ok { color: var(--green); font-variant-numeric: tabular-nums; }
-    .aosub { font-size: var(--fs-caption); color: var(--mut); margin-top: 1px;
+    .aosub { font-size: var(--fs-caption); color: var(--text-3); margin-top: 1px;
       font-variant-numeric: tabular-nums; }
     .acardmore { padding: 8px 14px; border-top: 1px solid var(--border-inner);
       font-size: var(--fs-sub); font-weight: 600; color: var(--amex-blue);
@@ -3560,9 +3558,10 @@
     .wcolh { display: flex; align-items: center; gap: 14px; margin: 14px 20px 0;
       padding: 0 16px 8px; border-bottom: 1px solid var(--bd2); }
     .wcolh > div { font-size: var(--fs-sub); font-weight: 600;
-      color: var(--text-5); letter-spacing: .3px; }
+      color: var(--text-3); letter-spacing: .3px; }
     .cw-flex { flex: 1; min-width: 0; }
-    .cw-exp { width: 80px; flex: none; text-align: right; }
+    .cw-exp { width: 96px; flex: none; text-align: right;
+      align-self: flex-start; }
     .cw-exp-s { width: 70px; flex: none; text-align: right; }
     .cw-chips { width: 330px; flex: none; }
     /* Single-card reading (按卡 sections / single-card filter): the status is
@@ -3599,9 +3598,9 @@
     .wtxt { min-width: 0; }
     .wnm { font-size: var(--fs-title); font-weight: 700; color: var(--ink);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .wds { font-size: var(--fs-body); color: var(--text-4); margin-top: 1px;
+    .wds { font-size: var(--fs-body); color: var(--text-3); margin-top: 1px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .wexp { font-size: var(--fs-amount); color: var(--text-4);
+    .wexp { font-size: var(--fs-amount); color: var(--text-3);
       font-variant-numeric: tabular-nums; white-space: nowrap; }
     .wexp.urgent { font-weight: 700; color: var(--red); }
 
@@ -3612,7 +3611,7 @@
     .wstat { font-size: var(--fs-body); color: var(--sub);
       font-variant-numeric: tabular-nums; }
     .wstat.ok { color: var(--green); font-weight: 600; }
-    .wstat.mut { color: var(--text-4); }
+    .wstat.mut { color: var(--text-3); }
     .wchip { display: inline-flex; align-items: center; gap: 4px;
       font-size: var(--fs-caption); font-weight: 600; color: var(--sub);
       background: var(--panel); border: 1px solid var(--surface-seg);
@@ -3650,20 +3649,20 @@
     .wrhd .tt { flex: 1; min-width: 0; }
     .wrhd .t1 { font-size: var(--fs-header); font-weight: 800;
       color: var(--navy); letter-spacing: -.2px; }
-    .wrhd .t2 { font-size: var(--fs-caption); color: var(--text-4);
+    .wrhd .t2 { font-size: var(--fs-caption); color: var(--text-3);
       margin-top: 1px; font-variant-numeric: tabular-nums; }
     .wrstats { display: flex; gap: 14px; margin-right: 6px; }
     .wrstat { text-align: center; }
     .wrstat .n { font-size: var(--fs-stat); font-weight: 800;
       font-variant-numeric: tabular-nums; }
-    .wrstat .l { font-size: var(--fs-caption); color: var(--text-4); }
+    .wrstat .l { font-size: var(--fs-caption); color: var(--text-3); }
     .wprog { flex: none; background: #fff; padding: 0 20px 14px;
       border-bottom: 1px solid var(--line2); }
 
     /* Result / running pinned footer (legend + back, or the running note). */
     .wfoot { display: flex; align-items: center; gap: 10px; flex: none;
       background: #fff; border-top: 1px solid var(--line2); padding: 12px 20px; }
-    .wfoot .txt { flex: 1; font-size: var(--fs-caption); color: var(--text-5);
+    .wfoot .txt { flex: 1; font-size: var(--fs-caption); color: var(--text-3);
       line-height: 1.5; }
     .wfoot .txt b { color: var(--amber); font-weight: 700; }
     .wbtn { border: 1px solid var(--border-1); background: #fff;
@@ -3683,7 +3682,7 @@
       border-radius: var(--r-btn); corner-shape: var(--se); padding: 0 14px;
       display: flex; align-items: center; gap: 7px; }
     .wbtile .n { font-size: var(--fs-stat); font-weight: 800;
-      font-variant-numeric: tabular-nums; }
+      font-variant-numeric: tabular-nums; min-width: 5.5ch; text-align: right; }
     .wbtile .n.navy { color: var(--navy); }
     .wbtile .n.green { color: var(--green); }
     .wbtile .n.ink { color: var(--ink); }
@@ -3700,7 +3699,7 @@
       padding: 2px 8px; font-variant-numeric: tabular-nums; }
     .wbgh-badge.amber { font-weight: 700; color: var(--amber);
       background: var(--amber-tint); }
-    .wbgh-sum { font-size: var(--fs-sub); color: var(--text-5);
+    .wbgh-sum { font-size: var(--fs-sub); color: var(--text-3);
       font-variant-numeric: tabular-nums; white-space: nowrap; }
     /* A benefit row stacks its main line over an optional micro-bar. */
     .wrow.wbenefit { flex-direction: column; align-items: stretch; gap: 0; }
@@ -3716,9 +3715,9 @@
       font-variant-numeric: tabular-nums; white-space: nowrap; }
     .wb-amt.done { color: var(--green); }
     .wb-amt .of { font-size: var(--fs-caption); font-weight: 400;
-      color: var(--text-5); }
+      color: var(--text-3); }
     .wb-amt.done .of { color: var(--archived-sub); }
-    .wb-word { font-size: var(--fs-caption); color: var(--text-4);
+    .wb-word { font-size: var(--fs-caption); color: var(--text-3);
       white-space: nowrap; }
     .wb-word.used { font-weight: 700; color: var(--green); }
     .wbmicro { margin-top: 9px; height: 3px; border-radius: 1.5px;
@@ -3728,12 +3727,12 @@
       white-space: nowrap; flex: none; }
     /* Wide untrackable / empty helpers reuse the sidebar bfoot-note tone. */
     .wnote { padding: 12px 20px 0; font-size: var(--fs-caption);
-      color: var(--fog); line-height: 1.5; }
+      color: var(--text-3); line-height: 1.5; }
     .wsec { display: flex; align-items: center; justify-content: space-between;
       gap: 10px; padding: 0 4px; margin-top: 10px; }
-    .wsec .lbl { font-size: var(--fs-sub); font-weight: 600; color: var(--mut);
+    .wsec .lbl { font-size: var(--fs-sub); font-weight: 600; color: var(--text-3);
       letter-spacing: .3px; }
-    .wsec .cnt { font-size: var(--fs-sub); color: var(--fog);
+    .wsec .cnt { font-size: var(--fs-sub); color: var(--text-3);
       font-variant-numeric: tabular-nums; }
     .wcardsec { display: flex; align-items: center; gap: 10px; padding: 4px 4px;
       margin-top: 10px; }
@@ -3745,7 +3744,7 @@
       font-weight: 700; color: var(--ink); white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis;
       font-variant-numeric: tabular-nums; }
-    .wcardsec .sum { font-size: var(--fs-sub); color: var(--mut); flex: none;
+    .wcardsec .sum { font-size: var(--fs-sub); color: var(--text-3); flex: none;
       white-space: nowrap; font-variant-numeric: tabular-nums; }
     .wcardsec .sum b { color: var(--green); font-weight: 700; }
     .wcardsec .sum b.mut { color: var(--sub); }
@@ -5560,9 +5559,8 @@
     dlg.append(el('div', {class: 'cf-meta',
       text: t('confirmMeta', {offers: byOffer.size, adds: tasks.length})}));
     // Only surfaced past the batch-size threshold, matching the design.
-    if (tasks.length > 30) {
-      dlg.append(el('div', {class: 'cf-warn'},
-        el('span', {text: '⚠ '}), t('confirmThrottle')));
+    if (tasks.length > 80) {
+      dlg.append(el('div', {class: 'cf-note', text: t('confirmThrottle')}));
     }
     dlg.append(el('div', {class: 'cf-btns'},
       el('div', {class: 'cf-cancel', text: t('cancel'),
@@ -6658,10 +6656,10 @@
     for (const e of group.entries) {
       const eDone = e.target > 0 && e.spent >= e.target;
       let tone = 'gray';
-      let suffix = '';
+      let suffix = fmtMoney(0, e.symbol);
       if (eDone) {
         tone = 'green';
-        suffix = '✓';
+        suffix = `✓ ${fmtMoney(e.target, e.symbol)}`;
       } else if (e.spent > 0) {
         tone = 'green';
         suffix = fmtMoney(e.spent, e.symbol);
