@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>body{margin:0;padding:32px;background:#f0eee9;font-family:'Public Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 12px/1.3 system-ui,sans-serif;color:rgba(0,0,0,.6);margin:8px 0}
+.dv-opt{display:flex;flex-direction:column;gap:12px}
+.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}
+.cap{font:600 11px system-ui,sans-serif;color:rgba(0,0,0,.45);margin:0 0 8px}</style>
+</head><body>
+<div class="dv-opt" id="16a">
+  <div class="dv-olabel"><a class="dv-oid" href="#16a">16a</a>宽模式已加 · chips「+N」展开态 — 实现口径:每行最多露 4 个 chip,点「+N」<b>就地展开</b>其余(不重渲染、无浮层);展开后 chips 换行、行随内容长高;按 offer 记忆,本次会话内不再收起</div>
+  <div style="width:880px;border-radius:18px;corner-shape:superellipse(1.6);background:#F5F6F8;border:1px solid #E9EAEE;box-shadow:0 32px 80px -12px rgba(0,23,90,.2),0 2px 6px rgba(0,23,90,.05);overflow:hidden;font-family:'Public Sans',system-ui,sans-serif">
+    <div style="margin:14px 20px 0;display:flex;align-items:center;padding:0 16px 8px;gap:14px;border-bottom:1px solid #E7E9EE">
+      <div style="flex:1;font-size:11.5px;font-weight:600;color:#6A6F7A;letter-spacing:.3px">商家 / OFFER</div>
+      <div style="width:80px;font-size:11.5px;font-weight:600;color:#6A6F7A;letter-spacing:.3px;text-align:right">到期</div>
+      <div style="width:330px;font-size:11.5px;font-weight:600;color:#6A6F7A;letter-spacing:.3px">各卡状态</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;padding:8px 20px 14px">
+      <div style="background:#fff;border:1px solid #ECEEF2;border-radius:12px;corner-shape:superellipse(1.6);padding:15px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 2px rgba(0,23,90,.04)">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:11px">
+          <div style="width:38px;height:38px;border-radius:9px;corner-shape:superellipse(1.6);background:#5B3E96;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">H+</div>
+          <div style="min-width:0"><div style="font-size:14.5px;font-weight:700;color:#1A1E28">Hallmark+</div><div style="font-size:12px;color:#6A6F7A;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Spend $5 or more, earn $5 back</div></div>
+        </div>
+        <div style="width:80px;text-align:right;flex-shrink:0"><div style="font-size:12.5px;font-weight:700;color:#C8102E">还剩 4 天</div></div>
+        <div style="width:330px;display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;align-items:center">
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯31004</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯91003</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:#0B7A3E;background:#EAF3EC;border:1px solid #D8E9DD;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21007 ✓ $5</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21001</span>
+          <span style="font-size:11.5px;font-weight:600;color:#8A8F99;padding:3px 4px;cursor:pointer" title="点击就地展开其余 1 个">+1</span>
+        </div>
+      </div>
+      <div style="background:#fff;border:1.5px solid #D9E4F0;border-radius:12px;corner-shape:superellipse(1.6);padding:15px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 2px rgba(0,23,90,.04)">
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:11px">
+          <div style="width:38px;height:38px;border-radius:9px;corner-shape:superellipse(1.6);background:#1A1E28;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">OK</div>
+          <div style="min-width:0"><div style="font-size:14.5px;font-weight:700;color:#1A1E28">Oakley</div><div style="font-size:12px;color:#6A6F7A;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Spend $150 or more, earn $30 back, up to 2 times (total of $60)</div></div>
+        </div>
+        <div style="width:80px;text-align:right;flex-shrink:0;align-self:flex-start;padding-top:2px"><div style="font-size:12.5px;font-weight:700;color:#C8102E">还剩 4 天</div></div>
+        <div style="width:330px;display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;align-items:center">
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯31004</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯91003</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯41003</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯41002</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21007</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#e9cd85,#c29a45)"></span>⋯21005</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯31009</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:#5A5F6A;background:#F5F6F8;border:1px solid #E9EBEF;border-radius:6px;padding:4px 9px;font-variant-numeric:tabular-nums"><span style="width:18px;height:12px;border-radius:2px;background:linear-gradient(135deg,#dfe2e6,#b3b9c1)"></span>⋯21001</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="dv-olabel" style="max-width:880px;display:block">上行 = 收起态(4 个 + <b>+1</b>,「+N」是可点文字不是 chip,避免与卡 chip 抢形);下行 = 点击后就地展开全部 8 个,chips 换成两行、行高随内容长(到期列顶对齐,避免基线漂移——建议回流实现:cw-exp 加 align-self:flex-start,见交接清单④)。展开状态按 offer key 记在 state.wideChipsExpanded,分组/过滤切换不丢;不提供收起(展开是低频动作,收起控件只会加噪)。</div>
+</div>
+
+
+</body></html>

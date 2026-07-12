@@ -3644,8 +3644,17 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 16px; font-weight: 800; }
     .wrhd .cir.ok { background: var(--green-tint); color: var(--green); }
-    .wrhd .cir.bad { background: var(--amberbg); color: var(--amber); }
+    .wrhd .cir.warn { background: var(--amber-tint); color: var(--amber); }
     .wrhd .cir.run { background: var(--amex-blue-tint); }
+    /* Throttled-stop strip (15b): what happened + what to do, full width,
+       pinned between the result header and the table. */
+    .wthrottle { display: flex; align-items: center; gap: 9px; flex: none;
+      background: var(--amber-tint); border-bottom: 1px solid var(--amber-border);
+      padding: 9px 20px; font-size: var(--fs-sub); color: var(--amber);
+      line-height: 1.5; }
+    .wthrottle .ico { font-size: 12px; line-height: 1; flex: none; }
+    .wthrottle .tx { flex: 1; }
+    .wthrottle b { color: inherit; }
     .wrhd .tt { flex: 1; min-width: 0; }
     .wrhd .t1 { font-size: var(--fs-header); font-weight: 800;
       color: var(--navy); letter-spacing: -.2px; }
@@ -6364,7 +6373,7 @@
     const throttled = results.some(
       (r) => r.blocked || r.state === ResultState.SKIPPED);
     const hd = el('div', {class: 'wrhd'});
-    hd.append(el('div', {class: throttled ? 'cir bad' : 'cir ok',
+    hd.append(el('div', {class: throttled ? 'cir warn' : 'cir ok',
       text: throttled ? '!' : '✓'}));
     hd.append(el('div', {class: 'tt'},
       el('div', {class: 't1',
@@ -6381,6 +6390,14 @@
     hd.append(el('button', {class: 'cl', title: t('close'), text: '×',
       onclick: () => hidePanel()}));
     shell.append(hd);
+    // Throttled stop reads as a full-width amber strip under the header (15b):
+    // what happened + what to do, pinned above the scrolling table.
+    if (throttled) {
+      shell.append(el('div', {class: 'wthrottle'},
+        el('span', {class: 'ico', text: '⚠'}),
+        el('div', {class: 'tx'},
+          el('b', {text: t('throttledTitle')}), ' ', t('throttledBody'))));
+    }
     shell.append(el('div', {class: 'wcolh'},
       el('div', {class: 'cw-flex', text: t('colOffer')}),
       el('div', {class: 'cw-rchips', text: t('colCardResult')})));
