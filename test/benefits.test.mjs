@@ -14,6 +14,7 @@ const {
   fetchAllBenefits, buildBenefitIndex, benefitStats,
   annualFeeFor, benefitPeriodLabel, daysUntil,
   decodeHtml, parseCreditAmount,
+  collectUntrackableBenefits, benefitPeriodTone, buildBenefitPeriodGroups,
 } = api;
 
 const realFetch = globalThis.fetch;
@@ -186,6 +187,125 @@ test('parseCreditAmount pulls the dollar value from a title', () => {
   assert.equal(parseCreditAmount('$1,200 Amex Travel Credit'), 1200);
   assert.equal(parseCreditAmount('Global Entry Credit'), 0);
 });
+
+test('benefitStats narrows to a single card via cardFilter', () => {
+  // Same benefit on two cards; the group merges them but per-card stats must
+  // count only the filtered card's own spend / remaining / annual fee.
+  const benefits = [
+    {sorBenefitId: 'A', name: 'Dining', category: '', period: 'month',
+      periodEnd: '2026-07-31', target: 20, spent: 15, remaining: 5,
+      symbol: '$', token: 'PLAT', family: 'Platinum', digits: '1'},
+    {sorBenefitId: 'A2', name: 'Dining', category: '', period: 'month',
+      periodEnd: '2026-07-31', target: 20, spent: 5, remaining: 15,
+      symbol: '$', token: 'GOLD', family: 'Gold', digits: '2'},
+  ];
+  const groups = buildBenefitIndex(benefits, NOW);
+  const cards = [card('PLAT', 'Platinum', '1005'), card('GOLD', 'Gold', '2')];
+
+  const all = benefitStats(groups, cards, NOW);
+  assert.equal(all.redeemedYtd, 20); // 15 + 5
+  assert.equal(all.thisMonthUnused, 20); // group remaining, expires this month
+
+  const plat = benefitStats(groups, cards, NOW, 'PLAT');
+  assert.equal(plat.redeemedYtd, 15); // only the Platinum entry
+  assert.equal(plat.thisMonthUnused, 5); // 20 - 15 on the Platinum card
+  assert.equal(plat.annualFee, 695); // only the Platinum fee
+});
+
+test('benefitPeriodTone goes amber only below 25% of the period', () => {
+  // Documented anchors: 每月 19/31 stays grey, 每半年 38/182 turns amber.
+  assert.equal(benefitPeriodTone('month', 19), 'gray');
+  assert.equal(benefitPeriodTone('half', 38), 'amber');
+  assert.equal(benefitPeriodTone('year', 172), 'gray');
+  assert.equal(benefitPeriodTone('quarter', 10), 'amber');
+  assert.equal(benefitPeriodTone('month', -3), 'amber'); // expired
+  assert.equal(benefitPeriodTone('year', Infinity), 'gray'); // no end date
+});
+
+test('buildBenefitPeriodGroups buckets by cadence with summaries', () => {
+  const groups = [
+    {name: 'M1', period: 'month', daysLeft: 19, target: 25, spent: 0,
+      remaining: 25, fullyUsed: false, status: 'ACTIVE'},
+    {name: 'M2', period: 'month', daysLeft: 12, target: 40, spent: 8.63,
+      remaining: 31.37, fullyUsed: false, status: 'ACTIVE'},
+    {name: 'H1', period: 'half', daysLeft: 38, target: 1500, spent: 0,
+      remaining: 1500, fullyUsed: false, status: 'ACTIVE'},
+    {name: 'Y1', period: 'year', daysLeft: 172, target: 219, spent: 219,
+      remaining: 0, fullyUsed: true, status: 'ACHIEVED'},
+    {name: 'Y2', period: 'year', daysLeft: Infinity, target: 189, spent: 0,
+      remaining: 189, fullyUsed: false, status: 'NOTENROLLED'},
+  ];
+  const sections = buildBenefitPeriodGroups(groups);
+
+  // Only non-empty periods, in cadence order (no 每季 here).
+  assert.deepEqual(sections.map((s) => s.period), ['month', 'half', 'year']);
+
+  const month = sections[0];
+  assert.equal(month.count, 2);
+  assert.equal(month.amount, 56.37); // 25 + 31.37 remaining
+  assert.equal(month.activation, false);
+  assert.equal(month.daysLeft, 12); // soonest reset in the bucket
+
+  const year = sections[2];
+  assert.equal(year.count, 2);
+  assert.equal(year.amount, 189); // done Y1 contributes 0; inactive Y2 target
+  assert.equal(year.activation, true); // only pending is a not-activated perk
+  assert.equal(year.daysLeft, 172); // Infinity ignored
+});
+
+test('collectUntrackableBenefits gathers dropped trackers + untracked perks',
+  () => {
+    const perCard = [{
+      card: {token: 'PLAT', family: 'Platinum', digits: '1005'},
+      trackers: [
+        makeTracker('Airline Fee', {sor: 'AIR', target: 200, spent: 50}),
+        makeTracker('Centurion via spend',
+          {sor: 'CENT', category: 'spend', target: 75000, spent: 100}),
+        makeTracker('Delta Sky Club',
+          {sor: 'DSC', category: 'access', unit: 'PASSES',
+            target: 10, spent: 3}),
+      ],
+      catalog: {
+        air: makeCatalogEntry('$200 Airline Fee Credit',
+          {sor: 'AIR', layoutType: 'ENROLLED'}),
+        uber: makeCatalogEntry('Uber Cash',
+          {sor: 'UBER', layoutType: 'ENROLLED', enrollable: false}),
+        clear: makeCatalogEntry('$189 CLEAR+ Credit',
+          {sor: 'CLEAR', layoutType: 'NOTENROLLED', enrollable: true}),
+      },
+    }];
+
+    const names = collectUntrackableBenefits(perCard).map((u) => u.name);
+    // Spend-to-unlock + pass-based trackers, and the enrolled untracked perk.
+    assert.ok(names.includes('Centurion via spend'));
+    assert.ok(names.includes('Delta Sky Club'));
+    assert.ok(names.includes('Uber Cash'));
+    // The tracked dollar credit and its catalog twin are excluded, and the
+    // not-enrolled enrollable credit stays a 去激活 row (not untrackable).
+    assert.ok(!names.some((n) => /Airline Fee/.test(n)));
+    assert.ok(!names.some((n) => /CLEAR/.test(n)));
+    assert.equal(names.length, 3);
+  });
+
+test('fetchAllBenefits attaches an untrackable summary without changing rows',
+  async () => {
+    globalThis.fetch = createMockFetch({
+      benefits: {
+        PLAT: [
+          makeTracker('$300 Dining', {sor: 'DINE', target: 20, spent: 8}),
+          makeTracker('Delta Sky Club',
+            {sor: 'DSC', unit: 'PASSES', target: 10, spent: 3}),
+        ],
+      },
+    });
+    const benefits = await fetchAllBenefits([card('PLAT', 'Platinum', '1005')]);
+    // The tracked list still holds only the dollar credit.
+    assert.deepEqual(benefits.map((b) => b.sorBenefitId), ['DINE']);
+    // The pass-based tracker rides along as an untrackable summary item.
+    assert.ok(Array.isArray(benefits.untrackable));
+    assert.deepEqual(
+      benefits.untrackable.map((u) => u.name), ['Delta Sky Club']);
+  });
 
 test('fetchAllBenefits joins the catalog: better titles + 未激活 rows',
   async () => {
