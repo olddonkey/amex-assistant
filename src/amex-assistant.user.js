@@ -3561,6 +3561,10 @@
     .cw-exp { width: 80px; flex: none; text-align: right; }
     .cw-exp-s { width: 70px; flex: none; text-align: right; }
     .cw-chips { width: 330px; flex: none; }
+    /* Single-card reading (按卡 sections / single-card filter): the status is
+       one word, not a chip rail — a compact right-aligned column, so the
+       merchant cell gets the space back instead of a blank right side. */
+    .cw-stat { width: 110px; flex: none; text-align: right; }
     .cw-check { width: 16px; flex: none; }
     .cw-rchips { width: 560px; flex: none; }
     .cw-bstat { width: 190px; flex: none; }
@@ -6128,7 +6132,7 @@
     top.append(el('div', {class: 'wcolh'},
       el('div', {class: 'cw-flex', text: t('colMerchantOffer')}),
       el('div', {class: 'cw-exp', text: t('colExpiry')}),
-      el('div', {class: 'cw-chips',
+      el('div', {class: singleRead ? 'cw-stat' : 'cw-chips',
         text: t(singleRead ? 'colStatus' : 'colCardStatus')})));
     shell.append(top);
     shell.append(el('div', {class: 'wscroll', id: 'wscroll'}));
@@ -6324,7 +6328,7 @@
    */
   function wideSingleCells(redeemed, daysLeft, expiry) {
     const exp = el('div', {class: 'wexp cw-exp'});
-    const stat = el('div', {class: 'wstat cw-chips'});
+    const stat = el('div', {class: 'wstat cw-stat'});
     if (redeemed) {
       stat.classList.add('ok');
       stat.textContent = singleRedeemedText(redeemed);
