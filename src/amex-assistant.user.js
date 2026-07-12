@@ -2,7 +2,7 @@
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
 // @version      1.2.0
-// @description  Pick an Amex Offer and add it to multiple cards from one panel; verifies which cards actually got it. Local-only, no telemetry.
+// @description  Add an Amex Offer to multiple eligible cards and check the result for each card. No developer-operated backend or telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
 // @grant        none
@@ -183,7 +183,7 @@
       panelTitle: 'Amex 助手',
       launcherTitle: 'Amex 助手',
       launcherRunning: '提交中',
-      launcherDone: '已完成',
+      launcherDone: '已结束',
       refresh: '刷新',
       close: '关闭',
       // Target-language on purpose (pairs with the 'EN' glyph at the call
@@ -198,26 +198,21 @@
       clearSelection: '清空',
       listHeadAddable: '{n} 个可加 OFFER',
       listHeadSelected: '已选 {n} 个 OFFER',
-      cardsReadFailed: '{n} 张卡读取失败。',
+      cardsReadFailed: '未能读取 {n} 张卡。',
       cardsReadFailedNote:
-          '{names} 的 offer 本次未能读取，列表暂不含这些卡；点右上角 ↻ 重试。',
+          '本次未能读取 {names} 的 offer，列表暂不包含这些卡；点击右上角 ↻ 重试。',
       noMatchingOffers: '没有匹配的 offer',
       addToSelected: '加到所选卡',
-      footerIdle: '勾选 offer 后从这里并行提交',
-      footerSelPrefix: '已选 ',
-      footerSelMid: ' 个 · 将',
-      footerSelReqs: '并行一次发出 {n} 个请求',
-      // Wide mode reads with more room, so it spells out offer/添加 (9c mock).
-      footerSelMidWide: ' 个 offer · 将',
-      footerSelReqsWide: '并行一次发出 {n} 个添加请求',
-      addedToAll: '已添加到 {n} 张卡',
+      footerIdle: '勾选 offer 后即可提交',
+      footerSelected: '已选 {offers} 个 offer · 共 {adds} 次添加',
+      addedToAll: '已加到全部 {n} 张卡',
       addableN: '可加 {n}',
       addedN: '已加 {n}',
-      chooseCards: '加到哪些卡',
+      chooseCards: '选择目标卡',
       addedMark: '已加 ✓',
       expiresShort: '至 {date}',
       // Last-run strip
-      lastRunPrefix: '上次执行：',
+      lastRunPrefix: '上次添加：',
       lastRunConfirmed: '{n} 确认已加',
       lastRunFailed: '{n} 失败',
       lastRunDedupe: '{n} 疑似去重',
@@ -231,81 +226,80 @@
       loadingCardList: '正在读取卡列表…',
       loadingReadOnly: '这里只读取 offer 列表，不会改动账户',
       // Confirm dialog
-      confirmTitle: '同时提交 {n} 个添加？',
-      confirmSub: '一次性同时提交，提交后不可撤销',
-      confirmThrottle: '一次提交超过 30 个添加可能触发限流，建议分批',
-      confirmCards: '{n} 张卡',
-      confirmMeta: '共 {offers} 个 offer · {adds} 次添加 · 完成后逐卡确认',
+      confirmTitle: '提交这 {n} 次添加？',
+      confirmSub: '同一个 offer 的目标卡会同时提交；提交后不可撤销。',
+      confirmThrottle: '本轮超过 30 次添加可能触发限流，建议分批提交。',
+      confirmCards: '涉及 {n} 张卡',
+      confirmMeta: '共 {offers} 个 offer · {adds} 次添加 · 完成后逐卡复查',
       cancel: '取消',
       confirmSubmit: '确认提交',
       // Running
       runningTitle: '正在添加到卡上…',
-      runningSubtitle: '已提交 {n} 个添加请求',
+      runningSubtitle: '正在处理 {n} 次添加',
       processedOf: '已处理 {done} / {total}',
       submitOk: '提交成功',
       submitFail: '提交失败',
       submitting: '提交中',
       notSubmitted: '未提交',
       runningNoteLead: '请勿关闭本页',
-      runningNote: ' · 全部完成后重新读取已加列表逐卡确认',
+      runningNote: ' · 提交完成后重新读取已添加列表，逐卡复查',
       readFailBanner: '读取失败，以下结果不含这张卡',
       // First-run trust screen
-      trustTitle1: '把一个 offer，',
-      trustTitle2: '加到你的每张卡',
-      trustDesc: '在 Amex 网页上 Add to Card 之后，其它卡就看不到这个 offer ' +
-        '了。Amex 助手把你选的 offer 同时加到多张卡，并逐卡确认结果。',
-      trustB1Lead: '纯本地运行',
-      trustB1Rest: ' — 零后端、零上报，代码可审计',
-      trustB2Lead: '先只读',
-      trustB2Rest: ' — 打开只读取 Offer 列表，不改动账户',
-      trustB3Lead: '你说了算',
-      trustB3Rest: ' — 勾选并确认后才会提交',
+      trustTitle1: '把同一个 offer',
+      trustTitle2: '加到多张符合条件的卡',
+      trustDesc: '在 Amex 网页上完成 Add to Card 后，该 offer 可能从其他卡的列表中消失。' +
+          'Amex 助手会将你选择的 offer 同时提交到多张符合条件的卡，并逐卡复查结果。',
+      trustB1Lead: '本地运行',
+      trustB1Rest: ' — 无自建后端、无遥测，源码可审计',
+      trustB2Lead: '默认只读',
+      trustB2Rest: ' — 打开时仅仅读取 offer 列表，不改动账户',
+      trustB3Lead: '由你确认',
+      trustB3Rest: ' — 只有勾选并确认后才会提交',
       trustStart: '开始读取',
-      trustFoot: '技术上无法联系任何第三方（@grant none）',
+      trustFoot: '当前代码不向第三方发送请求；源码可公开审查',
       // Result
-      resultTitleOk: '添加完成，已核对',
-      resultTitleStopped: '已停止本轮添加',
-      resultSubtitle: '已处理 {n} 个添加请求',
+      resultTitleOk: '本轮处理完成',
+      resultTitleStopped: '本轮已停止',
+      resultSubtitle: '已处理 {n} 次添加',
       confirmedAdded: '确认已加',
       addFailed: '添加失败',
-      dedupeOrUnknown: '疑似去重/无法确认',
-      throttledTitle: '检测到限流或拦截。',
-      throttledBody: '收到 429/403 或异常响应后，剩余请求已经停止，' +
-          '也没有继续复查。建议等几分钟再点「重试未完成项」，不要马上反复提交。',
+      dedupeOrUnknown: '疑似去重 / 无法确认',
+      throttledTitle: '检测到限流或请求被拦截',
+      throttledBody: '收到 429、403 或异常响应后，本轮已停止，且未继续复查。' +
+          '请等待几分钟后再选择「重试未完成项」，不要立即反复提交。',
       dedupeHelpTitle: '什么是疑似去重？',
-      dedupeHelpBody: 'Amex 接口返回添加成功，但重新读取已添加列表时，' +
-          '这张卡上没有看到该 offer，就会归到这里。常见原因是同一个 offer ' +
-          '可能只能加到一张卡；「无法确认」表示复查未完成。',
-      secSkipped: '未提交 — 检测到限流后中止',
-      secGhost: '疑似去重 — 接口成功，但复查没看到',
+      dedupeHelpBody: 'Amex 返回添加成功，但复查该卡时没有看到这个 offer，因此归为「疑似去重」。' +
+          '常见原因是同一个 offer 可能只能加到一张卡；「无法确认」表示复查未完成。',
+      secSkipped: '未提交 — 检测到限流或拦截后停止',
+      secGhost: '疑似去重 — Amex 返回成功，但复查未见该 offer',
       secUnverified: '无法确认 — 复查未完成',
       retryUnfinished: '重试未完成项',
       backToList: '返回列表',
       runInterrupted: '添加过程中断：{msg}',
       // Empty / error
       emptyTitle: '没有可加的 offer',
-      emptyBody: '所有 offer 都已加到它们可用的卡上。',
+      emptyBody: '所有符合条件的 offer 都已添加。',
       reload: '重新读取',
       errorTitle: '读取 offer 列表失败',
-      errorSessionHint: '登录状态可能已过期。请先在当前页面登录 Amex，再重试。',
+      errorSessionHint: 'Amex 登录状态可能已过期。请先在当前页面重新登录，再重试。',
       retry: '重试',
-      cardsReadAllFailed: '卡片 offer 读取失败，请稍后重试。',
+      cardsReadAllFailed: '所有卡的 offer 均读取失败，请稍后重试。',
       // Benefits
       primaryCardsN: '{n} 张主卡',
       updatedJustNow: '刚刚更新',
       updatedMinsAgo: '{n} 分钟前更新',
       updatedHoursAgo: '{n} 小时前更新',
-      loadingBenefits: '正在读取每张卡的 benefit 信息…',
+      loadingBenefits: '正在读取每张卡的 benefit…',
       benefitsReadOnly: '只读查看，不会改动账户',
       benefitsReadFailed: '读取失败',
       searchBenefits: '搜索 benefit 或卡',
       sortByExpiry: '按到期时间排序 ',
       noBenefitsMatch: '没有匹配「{q}」的 benefit',
-      noBenefits: '这些卡上没有可追踪的 benefit',
-      leftThisMonth: '本月还没用的',
-      redeemedYtd: '今年已返现',
-      feePayback: '年费回本',
-      feeOffset: '年费回本 {spent}/{fee}',
+      noBenefits: '这些卡上没有可自动追踪的 benefit',
+      leftThisMonth: '本月到期未用',
+      redeemedYtd: '已用额度',
+      feePayback: '已用额度 / 年费',
+      feeOffset: '已用额度 {spent}/{fee}',
       trackedOnly: '仅含可自动追踪项',
       trackedOnly2: '按可追踪项目',
       // Period group headers + three-state row language (13a).
@@ -329,7 +323,7 @@
       subAddable: '可加',
       subAdded: '已加',
       statRedeemed: '已返现',
-      statPending: '待消费',
+      statPending: '未见返现',
       statExpiring: '7 天内过期',
       redeemedOfCards: '{x} / {y} 卡已返现',
       groupByExpiry: '按到期',
@@ -338,23 +332,23 @@
       nItems: '{n} 个',
       uncategorized: '未分类',
       cardGroupBack: '{amt} 已返现',
-      cardGroupPending: '全部待消费',
+      cardGroupPending: '均未见返现',
       singleRedeemed: '✓ {amt} 已返现',
       postedOn: '{date} 入账',
       expandRest: '展开其余 {n} 个 ▾',
       collapseRest: '收起 ▴',
-      totalRedeemed: '共返 {amt}',
+      totalRedeemed: '合计返现 {amt}',
       noCashbackSeen: '未见返现',
       cashbackPosted: '✓ 已返现',
       pointsAmount: '{n} 点',
-      noAddedOffers: '还没有已加的 offer',
+      noAddedOffers: '尚未添加任何 offer',
       addedLoading: '正在读取返现记录…',
       addedError: '返现记录读取失败。',
       addedFootnote:
-          '消费状态按返现入账记录归类，入账通常延迟 1–5 天 · 以 Amex 为准',
+          '返现状态依据已入账记录判断；入账通常延迟 1–5 天，未见返现不代表尚未消费 · 以 Amex 为准',
       // Wide mode (G4): the second density (≈880px centered overlay).
-      expandWide: '展开',
-      collapseSidebar: '收窄',
+      expandWide: '展开面板',
+      collapseSidebar: '切回侧栏',
       colMerchantOffer: '商家 / OFFER',
       colExpiry: '到期',
       colCardStatus: '各卡状态',
@@ -364,9 +358,9 @@
       colCardResult: '各卡结果',
       multiAddableOnly: '只看多卡可加',
       nCards: '{n} 张卡',
-      wideResultSub: '{n} 个添加请求并行发出 · 已重新读取各卡确认',
-      resultLegend: '✗ 失败 = Amex 返回错误 · ? 疑似重复 = Amex 报成功但复读时' +
-          '不在该卡（通常同一 offer 只能加一张卡）',
+      wideResultSub: '已处理 {n} 次添加 · 结果按卡展示',
+      resultLegend: '✗ 添加失败 = Amex 返回错误 · ? 疑似去重 = ' +
+          'Amex 返回成功，但复查该卡时未见此 offer',
       retryFailed: '重试失败项',
       period_month: '月',
       period_quarter: '季',
@@ -377,42 +371,39 @@
       panelTitle: 'Amex Assistant',
       launcherTitle: 'Amex Assistant',
       launcherRunning: 'Submitting',
-      launcherDone: 'Done',
+      launcherDone: 'Finished',
       refresh: 'Refresh',
       close: 'Close',
       // Target-language on purpose; see zh.switchLang.
       switchLang: '切换到中文',
       // Offers list
-      listSubtitle: '{offers} offers · {cards} cards',
+      listSubtitle: 'Offers: {offers} · Cards: {cards}',
       searchOffers: 'Search merchants or offers',
       allCards: 'All cards',
-      multiOnly: 'Multi-card only',
+      multiOnly: 'Eligible on 2+ cards',
       selectAllAddable: 'Select all eligible',
       clearSelection: 'Clear',
-      listHeadAddable: '{n} eligible OFFERS',
-      listHeadSelected: '{n} OFFERS selected',
-      cardsReadFailed: '{n} card(s) could not be read.',
-      cardsReadFailedNote: 'Offers on {names} could not be read this time ' +
-          'and are not listed; click ↻ (top right) to retry.',
+      listHeadAddable: 'Eligible offers: {n}',
+      listHeadSelected: 'Selected offers: {n}',
+      cardsReadFailed: 'Could not read cards: {n}.',
+      cardsReadFailedNote: 'Offers for {names} could not be read and are ' +
+          'not shown. Use ↻ in the upper-right corner to try again.',
       noMatchingOffers: 'No matching offers',
       addToSelected: 'Add to selected cards',
-      footerIdle: 'Check offers, then submit them here in parallel',
-      footerSelPrefix: 'Selected ',
-      footerSelMid: ' · ',
-      footerSelReqs: '{n} requests in parallel, all at once',
-      footerSelMidWide: ' · ',
-      footerSelReqsWide: '{n} add requests in parallel, all at once',
-      addedToAll: 'Added to all {n} cards',
+      footerIdle: 'Select offers to continue',
+      footerSelected: 'Offers selected: {offers} · Add to Card requests: ' +
+          '{adds}',
+      addedToAll: 'Added to every eligible card ({n})',
       addableN: '{n} eligible',
       addedN: '{n} added',
-      chooseCards: 'Choose which cards to add to',
+      chooseCards: 'Select cards',
       addedMark: 'Added ✓',
       expiresShort: 'Expires {date}',
       // Last-run strip
       lastRunPrefix: 'Last run: ',
       lastRunConfirmed: '{n} confirmed',
       lastRunFailed: '{n} failed',
-      lastRunDedupe: '{n} possible duplicate(s)',
+      lastRunDedupe: 'Possible duplicates: {n}',
       view: 'View',
       today: 'Today {time}',
       yesterday: 'Yesterday {time}',
@@ -424,89 +415,100 @@
       loadingReadOnly: 'Read-only at this step — nothing on the account ' +
           'changes',
       // Confirm dialog
-      confirmTitle: 'Submit all {n} additions at once?',
-      confirmSub: 'All submitted together at once; this cannot be undone',
-      confirmThrottle: 'Submitting over 30 at once may trip rate limits; ' +
-          'consider batching',
-      confirmCards: '{n} card(s)',
-      confirmMeta: '{offers} offer(s) · {adds} addition(s) · ' +
-          'each card is verified afterwards',
+      confirmTitle: 'Submit these Add to Card requests ({n})?',
+      confirmSub: 'For each offer, selected cards are submitted ' +
+          'together. This cannot be undone.',
+      confirmThrottle: 'More than 30 Add to Card requests in one run may ' +
+          'trigger rate limits; consider submitting in smaller ' +
+          'batches.',
+      confirmCards: 'Cards: {n}',
+      confirmMeta: 'Offers: {offers} · Add to Card requests: {adds} · ' +
+          'each card checked afterward',
       cancel: 'Cancel',
       confirmSubmit: 'Confirm & submit',
       // Running
       runningTitle: 'Adding to cards…',
-      runningSubtitle: '{n} add requests submitted',
+      runningSubtitle: 'Processing Add to Card requests ({n})',
       processedOf: '{done} / {total} processed',
       submitOk: 'Submitted',
       submitFail: 'Failed',
       submitting: 'Submitting',
       notSubmitted: 'Not submitted',
       runningNoteLead: 'Keep this page open',
-      runningNote: ' · when done, added lists are re-read to verify each card',
+      runningNote: ' · when submission finishes, each card is checked again',
       readFailBanner: 'couldn’t be read; results below exclude it',
       // First-run trust screen
       trustTitle1: 'Add one offer',
-      trustTitle2: 'to every card you own',
-      trustDesc: 'Once you Add to Card on the Amex site, your other cards ' +
-        'can no longer see that offer. Amex Assistant adds your chosen ' +
-        'offer to several cards at once, then verifies each card.',
+      trustTitle2: 'to multiple eligible cards',
+      trustDesc: 'After you use Add to Card on the Amex site, the offer ' +
+          'may disappear from your other eligible cards. Amex ' +
+          'Assistant submits the selected offer to multiple ' +
+          'eligible cards at the same time, then checks each ' +
+          'card again.',
       trustB1Lead: 'Runs locally',
-      trustB1Rest: ' — no backend, no telemetry, auditable code',
-      trustB2Lead: 'Reads first',
-      trustB2Rest: ' — opening only reads your offer list, changes nothing',
-      trustB3Lead: 'You decide',
-      trustB3Rest: ' — nothing is submitted until you confirm',
-      trustStart: 'Start reading',
-      trustFoot: 'Technically cannot reach any third party (@grant none)',
+      trustB1Rest: ' — no developer-operated backend or ' +
+          'telemetry; auditable source code',
+      trustB2Lead: 'Read-only by default',
+      trustB2Rest: ' — opening the panel only reads your offers ' +
+          'and does not change your account',
+      trustB3Lead: 'You confirm each action',
+      trustB3Rest: ' — requests are sent only after you select ' +
+          'offers and confirm',
+      trustStart: 'Read offers',
+      trustFoot: 'The current code makes no third-party requests; ' +
+          'the source is open for review.',
       // Result
-      resultTitleOk: 'Done — verified',
-      resultTitleStopped: 'Run stopped early',
-      resultSubtitle: '{n} add requests processed',
-      confirmedAdded: 'Confirmed',
-      addFailed: 'Failed',
-      dedupeOrUnknown: 'Possible duplicate / unconfirmed',
-      throttledTitle: 'Throttling or interception detected.',
-      throttledBody: 'After a 429/403 or an abnormal response, the ' +
-          'remaining requests were stopped and verification was skipped. ' +
-          'Wait a few minutes before pressing "Retry unfinished" — do not ' +
-          'resubmit right away.',
-      dedupeHelpTitle: 'What is "possible duplicate"?',
-      dedupeHelpBody: 'Amex reported success, but on re-reading the ' +
-          'added list the offer was not on this card. Usually the same ' +
-          'offer can only be added to one card. "Unconfirmed" means ' +
-          'verification could not finish.',
-      secSkipped: 'Not submitted — stopped after a throttle signal',
-      secGhost: 'Possible duplicate — success reported, absent on re-read',
-      secUnverified: 'Unconfirmed — verification incomplete',
-      retryUnfinished: 'Retry unfinished',
+      resultTitleOk: 'Run complete',
+      resultTitleStopped: 'Run stopped',
+      resultSubtitle: 'Add to Card requests processed: {n}',
+      confirmedAdded: 'Added and verified',
+      addFailed: 'Add failed',
+      dedupeOrUnknown: 'Possible duplicate / Unconfirmed',
+      throttledTitle: 'Rate limit or blocked request detected',
+      throttledBody: 'The run stopped after a 429, 403, or abnormal ' +
+          'response, and verification did not continue. Wait a ' +
+          'few minutes before selecting "Retry unfinished items"; ' +
+          'do not resubmit immediately.',
+      dedupeHelpTitle: 'What does "possible duplicate" mean?',
+      dedupeHelpBody: 'Amex reported a successful Add to Card request, but ' +
+          'the offer was missing when this card was checked ' +
+          'again. A common reason is that the same offer may ' +
+          'only be added to one card. "Unconfirmed" means the ' +
+          'follow-up check could not be completed.',
+      secSkipped: 'Not submitted — run stopped after a ' +
+          'rate-limit or block signal',
+      secGhost: 'Possible duplicate — Amex reported success, ' +
+          'but the offer was missing on recheck',
+      secUnverified: 'Unconfirmed — follow-up check incomplete',
+      retryUnfinished: 'Retry unfinished items',
       backToList: 'Back to list',
       runInterrupted: 'Run interrupted: {msg}',
       // Empty / error
       emptyTitle: 'No offers to add',
-      emptyBody: 'Every offer is already on the cards it can go to.',
+      emptyBody: 'All eligible offers have already been added.',
       reload: 'Reload',
       errorTitle: 'Could not read the offers list',
-      errorSessionHint: 'Your session may have expired. Sign in to Amex on ' +
-          'this page, then retry.',
+      errorSessionHint: 'Your Amex session may have expired. Sign in on ' +
+          'this page, then try again.',
       retry: 'Retry',
-      cardsReadAllFailed: 'Could not read card offers. Please try again ' +
-          'later.',
+      cardsReadAllFailed: 'Offers could not be read for any card. ' +
+          'Please try again later.',
       // Benefits
-      primaryCardsN: '{n} primary card(s)',
+      primaryCardsN: 'Primary cards: {n}',
       updatedJustNow: 'Updated just now',
       updatedMinsAgo: 'Updated {n} min ago',
       updatedHoursAgo: 'Updated {n} h ago',
       loadingBenefits: 'Reading benefits on each card…',
       benefitsReadOnly: 'Read-only — nothing on the account changes',
-      benefitsReadFailed: 'Read failed',
+      benefitsReadFailed: 'Could not read benefits',
       searchBenefits: 'Search benefits or cards',
       sortByExpiry: 'Sorted by expiry ',
       noBenefitsMatch: 'No benefits match "{q}"',
-      noBenefits: 'No trackable benefits on these cards',
-      leftThisMonth: 'Left this month',
-      redeemedYtd: 'Redeemed this year',
-      feePayback: 'Fee payback',
-      feeOffset: 'Fee offset {spent}/{fee}',
+      noBenefits: 'No automatically trackable benefits on these cards',
+      leftThisMonth: 'Expiring this month',
+      redeemedYtd: 'Credits used',
+      feePayback: 'Credits used / annual fee',
+      feeOffset: 'Credits used: {spent}/{fee}',
       trackedOnly: 'Auto-tracked credits only',
       trackedOnly2: 'Tracked credits only',
       // Period group headers + three-state row language (13a).
@@ -514,48 +516,50 @@
       periodEvery_quarter: 'Quarterly',
       periodEvery_half: 'Semi-annual',
       periodEvery_year: 'Annual',
-      benefitPending: '{n} items · {amt} left',
-      benefitPendingActivate: '{n} items · {amt} to activate',
+      benefitPending: 'Benefits: {n} · Remaining: {amt}',
+      benefitPendingActivate: 'Benefits to activate: {n} · Total: {amt}',
       notUsed: 'Unused',
       usedPct: '{n}% used',
-      usedUp: 'Used up',
-      xCardsEach: '{n} cards · {amt} each',
-      xCardsTotal: '{n} cards · {amt} total',
-      untrackable: "Can't auto-track",
+      usedUp: 'Fully used',
+      xCardsEach: 'Cards: {n} · {amt} each',
+      xCardsTotal: 'Cards: {n} · {amt} total',
+      untrackable: 'Not automatically tracked',
       notActivated: 'Not activated',
       activate: 'Activate ↗',
       expired: 'Expired',
-      daysLeft: '{n} days left',
+      daysLeft: 'Days remaining: {n}',
       // Added (redeem-tracking) sub-view
-      subAddable: 'Addable',
+      subAddable: 'Eligible',
       subAdded: 'Added',
       statRedeemed: 'Cashback posted',
-      statPending: 'To spend',
+      statPending: 'No cashback posted',
       statExpiring: 'Expiring in 7 days',
-      redeemedOfCards: '{x} / {y} cards posted',
+      redeemedOfCards: 'Cards with cashback: {x}/{y}',
       groupByExpiry: 'By expiry',
       groupByCard: 'By card',
       groupByCategory: 'By category',
-      nItems: '{n} offers',
+      nItems: 'Offers: {n}',
       uncategorized: 'Uncategorized',
-      cardGroupBack: '{amt} back',
-      cardGroupPending: 'All to spend',
-      singleRedeemed: '✓ {amt} back',
+      cardGroupBack: 'Cashback posted: {amt}',
+      cardGroupPending: 'No cashback posted',
+      singleRedeemed: '✓ {amt} posted',
       postedOn: 'Posted {date}',
       expandRest: 'Show {n} more ▾',
       collapseRest: 'Collapse ▴',
-      totalRedeemed: '{amt} total back',
-      noCashbackSeen: 'No cashback yet',
+      totalRedeemed: 'Total cashback: {amt}',
+      noCashbackSeen: 'No cashback posted yet',
       cashbackPosted: '✓ Posted',
       pointsAmount: '{n} pts',
-      noAddedOffers: 'No added offers yet',
+      noAddedOffers: 'No offers have been added yet',
       addedLoading: 'Reading cashback records…',
       addedError: 'Could not read cashback records.',
-      addedFootnote: 'Spend status comes from posted cashback records, ' +
-          'which usually lag 1–5 days · Amex is authoritative',
+      addedFootnote: 'Cashback status is based on posted records. Posting ' +
+          'usually takes 1–5 days; no posted cashback does not ' +
+          'necessarily mean no purchase was made. Amex is ' +
+          'authoritative.',
       // Wide mode (G4): the second density (≈880px centered overlay).
-      expandWide: 'Expand',
-      collapseSidebar: 'Collapse',
+      expandWide: 'Expand panel',
+      collapseSidebar: 'Return to sidebar',
       colMerchantOffer: 'Merchant / offer',
       colExpiry: 'Expires',
       colCardStatus: 'Per-card status',
@@ -563,13 +567,13 @@
       colChooseCards: 'Add to which cards (tap a chip)',
       colOffer: 'OFFER',
       colCardResult: 'Per-card result',
-      multiAddableOnly: 'Multi-card eligible only',
-      nCards: '{n} cards',
-      wideResultSub: '{n} add requests sent in parallel · re-read to confirm',
-      resultLegend: '✗ Failed = Amex returned an error · ? Possible ' +
-          'duplicate = reported success but absent on re-read (an offer ' +
-          'usually adds to one card only)',
-      retryFailed: 'Retry failed',
+      multiAddableOnly: 'Eligible on 2+ cards',
+      nCards: 'Cards: {n}',
+      wideResultSub: 'Add to Card requests processed: {n} · results by card',
+      resultLegend: '✗ Add failed = Amex returned an error · ? Possible ' +
+          'duplicate = Amex reported success, but the offer ' +
+          'was missing on recheck',
+      retryFailed: 'Retry failed requests',
       period_month: 'mo',
       period_quarter: 'qtr',
       period_half: '6 mo',
@@ -4887,12 +4891,7 @@
     // The request count is the flattened, already-enrolled-skipping task set —
     // the same number the confirm dialog and the run will fire in parallel.
     const reqs = buildTasks().length;
-    const wide = currentDensity() === 'wide';
-    sm.append(document.createTextNode(t('footerSelPrefix')),
-      el('b', {text: String(offers)}),
-      document.createTextNode(t(wide ? 'footerSelMidWide' : 'footerSelMid')),
-      el('b', {text: t(wide ? 'footerSelReqsWide' : 'footerSelReqs',
-        {n: reqs})}));
+    sm.textContent = t('footerSelected', {offers, adds: reqs});
     go.disabled = reqs === 0;
   }
 
@@ -5461,10 +5460,10 @@
     body.append(counters(cols, 'lg'));
     if (throttled) {
       body.append(el('div', {class: 'info'},
-        el('b', {text: t('throttledTitle')}), t('throttledBody')));
+        el('b', {text: t('throttledTitle')}), ' ', t('throttledBody')));
     }
     body.append(el('div', {class: 'info'},
-      el('b', {text: t('dedupeHelpTitle')}), t('dedupeHelpBody')));
+      el('b', {text: t('dedupeHelpTitle')}), ' ', t('dedupeHelpBody')));
 
     // All outcome sections live in one white card, matching the design.
     const reslist = el('div', {class: 'reslist'});
