@@ -1,0 +1,27 @@
+:root {
+  --font-ui: 'Public Sans', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+
+  /* 边栏字阶(默认,400px 面板,密度优先) */
+  --fs-title: 13px;      /* 行标题 */
+  --fs-amount: 12.5px;   /* 金额 */
+  --fs-body: 11.5px;     /* 正文/控件 */
+  --fs-sub: 11px;        /* 副标题/组头 */
+  --fs-caption: 10.5px;  /* 说明/badge */
+  --fs-header: 14px;     /* 面板头标题 */
+  --fs-stat: 16px;       /* 统计数字 */
+  --row-pad: 12px 15px;
+}
+
+/* 宽模式字阶(≈880px 覆盖层,可读性优先,+1~1.5px) */
+[data-density="wide"] {
+  --fs-title: 14.5px;
+  --fs-amount: 14px;
+  --fs-body: 12.5px;
+  --fs-sub: 12px;
+  --fs-caption: 11.5px;
+  --fs-header: 15px;
+  --fs-stat: 16px;
+  --row-pad: 15px 18px;
+}
+
+/* 数字规则:所有金额/尾号/计数一律 tabular-nums */

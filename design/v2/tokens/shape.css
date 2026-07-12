@@ -1,0 +1,24 @@
+:root {
+  /* 圆角阶梯 — 全部配合 corner-shape: superellipse(1.6) */
+  --r-panel: 18px;   /* 面板 */
+  --r-row: 14px;     /* 边栏行卡 */
+  --r-item: 12px;    /* 宽模式行卡 / 统计卡 / 折叠行 */
+  --r-seg: 10px;     /* 分段 pill 容器 */
+  --r-btn: 9px;      /* 按钮 / 搜索框 */
+  --r-chip: 6px;     /* 状态小 chip(边栏);宽模式 7px */
+  --r-pill: 18px;    /* 卡过滤 chip(胶囊) */
+  --corner: superellipse(1.6);
+
+  /* 阴影 */
+  --shadow-panel: 0 32px 80px -12px rgba(0,23,90,.2), 0 2px 6px rgba(0,23,90,.05);
+  --shadow-card: 0 1px 2px rgba(0,23,90,.04);
+  --shadow-seg: 0 1px 3px rgba(0,23,90,.12);      /* pill 选中片 */
+  --shadow-cta: 0 6px 16px -8px rgba(0,111,207,.5); /* 主按钮 */
+  --shadow-input: inset 0 1px 2px rgba(0,23,90,.03);
+
+  /* 间距 */
+  --gap-row: 8px;      /* 行与行 */
+  --gap-block: 12px;   /* 控件区块 */
+  --gap-section: 16px; /* 组与组 */
+  --panel-pad: 16px;
+}
