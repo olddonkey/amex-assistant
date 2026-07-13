@@ -349,6 +349,9 @@
       // Wide mode (G4): the second density (≈880px centered overlay).
       expandWide: '展开面板',
       collapseSidebar: '切回侧栏',
+      // Session keep-alive header toggle.
+      keepAliveOn: '保持登录：已开启（点击关闭）',
+      keepAliveOff: '保持登录：已关闭（点击开启，防止 Amex 自动登出）',
       colMerchantOffer: '商家 / OFFER',
       colExpiry: '到期',
       colCardStatus: '各卡状态',
@@ -560,6 +563,9 @@
       // Wide mode (G4): the second density (≈880px centered overlay).
       expandWide: 'Expand panel',
       collapseSidebar: 'Return to sidebar',
+      // Session keep-alive header toggle.
+      keepAliveOn: 'Keep signed in: on (click to turn off)',
+      keepAliveOff: 'Keep signed in: off (click to prevent Amex auto sign-out)',
       colMerchantOffer: 'Merchant / offer',
       colExpiry: 'Expires',
       colCardStatus: 'Per-card status',
@@ -2744,6 +2750,126 @@
     }
   }
 
+  // ---- session keep-alive ---------------------------------------------------
+  // Amex signs an idle tab out after a few minutes, which can cut a long
+  // multi-card run short. Two page behaviours drive that logout: the site
+  // starts a countdown when the tab reports itself hidden/blurred, and it runs
+  // an inactivity manager the page exposes as `window.timeout`. This module
+  // keeps the session warm entirely on the client — it makes NO network request
+  // of its own — by (1) swallowing the hidden/blur signals before the page's
+  // own handlers can see them and (2) nudging that inactivity manager once a
+  // minute.
+  //
+  // `@grant none` means `window` here is the page's real window, so we can
+  // reach `window.timeout` directly (no userscript sandbox to cross). Another
+  // approach is to run at document-start and strip the page's
+  // `visibilitychange` listeners; we run at document-idle, so rather than race
+  // to remove listeners we intercept the events in the capture phase on
+  // `window` — which precedes the page's document-level handlers no matter when
+  // they were registered. That is both more reliable at our run time and fully
+  // reversible when the user turns the feature back off.
+
+  /** localStorage key holding the keep-alive on/off preference. */
+  const KEEPALIVE_STORAGE_KEY = 'amexAssistantKeepAlive';
+  /** How often to nudge the page's inactivity manager. */
+  const KEEPALIVE_INTERVAL_MS = 60000;
+  /** Visibility/focus signals we swallow so the page can't start a logout. */
+  const KEEPALIVE_SUPPRESSED = [
+    'visibilitychange', 'webkitvisibilitychange', 'blur', 'pagehide', 'freeze',
+  ];
+
+  /** Whether keep-alive is currently active. */
+  let keepAliveOn = false;
+  /** The nudge interval handle, or null when stopped. */
+  let keepAliveTimer = null;
+
+  /**
+   * Capture-phase handler that stops a hidden/blur event before the page's own
+   * handlers (which listen at the target/bubble phase) ever run, so the page
+   * keeps believing the tab is visible and focused.
+   * @param {!Event} event The intercepted event.
+   */
+  function keepAliveSuppress(event) {
+    event.stopImmediatePropagation();
+  }
+
+  /**
+   * Tells the page "the user is still here": pokes its inactivity manager if it
+   * exposes one, and otherwise replays low-frequency activity/focus events that
+   * such managers reset on. Never throws into the page.
+   */
+  function keepAliveNudge() {
+    try {
+      const mgr = window.timeout;
+      if (mgr && typeof mgr.checkVisibility === 'function') {
+        // The page's own manager: assert we are visible. Its signature has
+        // varied across builds, so try the observed shapes in order.
+        try { mgr.checkVisibility({hidden: false}); return; } catch { /* 2 */ }
+        try { mgr.checkVisibility(false); return; } catch { /* 3 */ }
+        try { mgr.checkVisibility(); return; } catch { /* fall through */ }
+      }
+      // No manager we recognise — fake plain user activity instead.
+      window.dispatchEvent(new Event('focus'));
+      document.dispatchEvent(
+        new MouseEvent('mousemove', {bubbles: true, clientX: 1, clientY: 1}));
+    } catch { /* keep-alive must never break the page */ }
+  }
+
+  /** Starts the suppressor + nudge loop (idempotent). */
+  function startKeepAlive() {
+    if (keepAliveTimer) return;
+    for (const type of KEEPALIVE_SUPPRESSED) {
+      window.addEventListener(type, keepAliveSuppress, true);
+      document.addEventListener(type, keepAliveSuppress, true);
+    }
+    keepAliveNudge();
+    keepAliveTimer = setInterval(keepAliveNudge, KEEPALIVE_INTERVAL_MS);
+  }
+
+  /** Stops the loop and removes the suppressor, restoring native behaviour. */
+  function stopKeepAlive() {
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer);
+      keepAliveTimer = null;
+    }
+    for (const type of KEEPALIVE_SUPPRESSED) {
+      window.removeEventListener(type, keepAliveSuppress, true);
+      document.removeEventListener(type, keepAliveSuppress, true);
+    }
+  }
+
+  /** Loads the saved keep-alive preference and activates it if it was on. */
+  function initKeepAlive() {
+    try {
+      keepAliveOn = localStorage.getItem(KEEPALIVE_STORAGE_KEY) === '1';
+    } catch { keepAliveOn = false; }
+    if (keepAliveOn) startKeepAlive();
+  }
+
+  /** Flips keep-alive from the header button, persisting the choice. */
+  function toggleKeepAlive() {
+    keepAliveOn = !keepAliveOn;
+    try {
+      localStorage.setItem(KEEPALIVE_STORAGE_KEY, keepAliveOn ? '1' : '0');
+    } catch { /* private mode etc.; the choice just won't stick */ }
+    if (keepAliveOn) startKeepAlive(); else stopKeepAlive();
+    render();
+  }
+
+  /**
+   * A snapshot of keep-alive state, exposed on `window.AmexAssistant` so it can
+   * be checked from the console on a live page.
+   * @return {{on: boolean, running: boolean, hasManager: boolean}} Status.
+   */
+  function keepAliveStatus() {
+    return {
+      on: keepAliveOn,
+      running: keepAliveTimer != null,
+      hasManager: !!(window.timeout &&
+          typeof window.timeout.checkVisibility === 'function'),
+    };
+  }
+
   /**
    * Tiny DOM builder. `props`: `class`/`style`/`text` plus `on*` handlers and
    * any attribute; data goes through `text`/children as text nodes (never
@@ -2958,6 +3084,9 @@
     .rf:hover { background: var(--hover-on-btn); }
     .rf.lang { font-size: var(--fs-caption); font-weight: 800; letter-spacing: .2px;
       color: var(--sub2); }
+    /* Keep-alive toggle: tinted solid when active, plain chip when off. */
+    .rf.ka.on { background: var(--blue); color: #fff; }
+    .rf.ka.on:hover { background: var(--blue2); }
     .cl { width: 30px; height: 30px; border-radius: 50%; margin-right: -4px;
       font-size: 15px; color: var(--sub); cursor: pointer; line-height: 1;
       background: var(--chip); border: none; flex: none; display: flex;
@@ -3988,6 +4117,15 @@
       '<line x1="14" y1="10" x2="21" y2="3"></line>' +
       '<line x1="10" y1="14" x2="3" y2="21"></line></svg>';
 
+  /** Shield + check for the session keep-alive toggle. */
+  const KEEPALIVE_SVG =
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" style="display:block">' +
+      '<path d="M12 3l7 3v5c0 4.6-3.1 7.8-7 9-3.9-1.2-7-4.4-7-9V6l7-3z">' +
+      '</path>' +
+      '<polyline points="9 11.6 11.2 13.8 15.5 9.4"></polyline></svg>';
+
   /** A small check mark for the wide "只看多卡可加" filled checkbox. */
   const CHECK_SVG =
       '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" ' +
@@ -4078,7 +4216,7 @@
       el('div', {class: 't1', text: opts.title}),
       opts.subtitle ? el('div', {class: 't2', text: opts.subtitle}) : null));
     if (opts.right) row.append(opts.right);
-    // Canonical button order (PanelHeader spec): 展开⤢/收窄 · EN · ⟳ · ×.
+    // Canonical button order (PanelHeader spec): 展开⤢/收窄 · 🛡 · EN · ⟳ · ×.
     // The density toggle only appears on the browse views (opts.expand) and
     // only when the window is wide enough to hold the overlay at all.
     if (opts.expand && canGoWide()) {
@@ -4090,6 +4228,16 @@
         title: wide ? t('collapseSidebar') : t('expandWide'),
         onclick: () => toggleDensity()});
       btn.innerHTML = wide ? COLLAPSE_SVG : EXPAND_SVG;
+      row.append(btn);
+    }
+    if (opts.keepAlive) {
+      // A persistent shield that stays lit while keep-alive is on; the tooltip
+      // names what a click does.
+      const btn = el('button', {
+        class: keepAliveOn ? 'rf ka on' : 'rf ka',
+        title: keepAliveOn ? t('keepAliveOn') : t('keepAliveOff'),
+        onclick: () => toggleKeepAlive()});
+      btn.innerHTML = KEEPALIVE_SVG;
       row.append(btn);
     }
     if (opts.lang) {
@@ -4232,7 +4380,8 @@
       subtitle: [t('listSubtitle',
         {offers: state.offers.length, cards: state.cards.length}),
       agoLabel(state.snapshotAt)].filter(Boolean).join(' · '),
-      expand: true, lang: true, refresh: true, close: true, tabs: true,
+      expand: true, keepAlive: true, lang: true, refresh: true, close: true,
+      tabs: true,
     }));
 
     const body = el('div', {class: 'body'});
@@ -5583,7 +5732,8 @@
   /** @param {!Element} shell Panel content root. */
   function renderEmptyView(shell) {
     shell.append(renderHeader({glyph: '＋', title: t('panelTitle'),
-      expand: true, close: true, lang: true, refresh: true, tabs: true}));
+      expand: true, keepAlive: true, close: true, lang: true, refresh: true,
+      tabs: true}));
     const reload = el('div', {class: 'btn', onclick: () => refresh()});
     const ic = el('span', {style: 'display:flex'});
     ic.innerHTML = REFRESH_SVG;
@@ -5598,7 +5748,7 @@
   /** @param {!Element} shell Panel content root. */
   function renderErrorView(shell) {
     shell.append(renderHeader({glyph: '＋', title: t('panelTitle'),
-      expand: true, close: true, lang: true, err: true}));
+      expand: true, keepAlive: true, close: true, lang: true, err: true}));
     shell.append(el('div', {class: 'body'}, el('div', {class: 'msg'},
       el('div', {class: 'cir bad', text: '!'}),
       el('div', {class: 'h', text: t('errorTitle')}),
@@ -5964,7 +6114,8 @@
       subtitle: [t('listSubtitle',
         {offers: state.offers.length, cards: state.cards.length}),
       agoLabel(state.snapshotAt)].filter(Boolean).join(' · '),
-      expand: true, lang: true, refresh: true, close: true, tabs: true,
+      expand: true, keepAlive: true, lang: true, refresh: true, close: true,
+      tabs: true,
     }));
     if (state.offersSub === 'added') renderWideAdded(shell);
     else renderWideAddable(shell);
@@ -7035,8 +7186,10 @@
     });
   }
 
-  window.AmexAssistant = {...api, showPanel, openPanel: showPanel};
+  window.AmexAssistant = {...api, showPanel, openPanel: showPanel,
+    keepAlive: {toggle: toggleKeepAlive, status: keepAliveStatus}};
   initLanguage();
   initDensity();
+  initKeepAlive();
   installLauncher();
 })();
