@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amex Assistant
 // @namespace    https://github.com/olddonkey/amex-assistant
-// @version      1.4.0
+// @version      1.5.0
 // @description  Add an Amex Offer to multiple eligible cards and check the result for each card. No developer-operated backend or telemetry.
 // @author       olddonkey
 // @match        https://global.americanexpress.com/*
