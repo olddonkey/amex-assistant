@@ -2838,11 +2838,15 @@
     }
   }
 
-  /** Loads the saved keep-alive preference and activates it if it was on. */
+  /**
+   * Loads the saved keep-alive preference and activates it. Defaults to ON
+   * (opt-out): only an explicit '0' — the user having turned it off — disables
+   * it, so a fresh install prevents Amex's auto sign-out out of the box.
+   */
   function initKeepAlive() {
     try {
-      keepAliveOn = localStorage.getItem(KEEPALIVE_STORAGE_KEY) === '1';
-    } catch { keepAliveOn = false; }
+      keepAliveOn = localStorage.getItem(KEEPALIVE_STORAGE_KEY) !== '0';
+    } catch { keepAliveOn = true; }
     if (keepAliveOn) startKeepAlive();
   }
 
@@ -3085,8 +3089,10 @@
     .rf.lang { font-size: var(--fs-caption); font-weight: 800; letter-spacing: .2px;
       color: var(--sub2); }
     /* Keep-alive toggle: tinted solid when active, plain chip when off. */
-    .rf.ka.on { background: var(--blue); color: #fff; }
-    .rf.ka.on:hover { background: var(--blue2); }
+    /* Active state uses the semantic "on/positive" green — not the action
+       blue, which the dual-blue rule reserves for actions and submissions. */
+    .rf.ka.on { background: var(--green); color: #fff; }
+    .rf.ka.on:hover { background: #0A6A36; }
     .cl { width: 30px; height: 30px; border-radius: 50%; margin-right: -4px;
       font-size: 15px; color: var(--sub); cursor: pointer; line-height: 1;
       background: var(--chip); border: none; flex: none; display: flex;
@@ -4118,13 +4124,13 @@
       '<line x1="10" y1="14" x2="3" y2="21"></line></svg>';
 
   /** Shield + check for the session keep-alive toggle. */
+  // A heartbeat/pulse line: the session is being kept "alive". Reads as an
+  // active signal rather than the old shield's "security" connotation.
   const KEEPALIVE_SVG =
       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" ' +
       'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round" style="display:block">' +
-      '<path d="M12 3l7 3v5c0 4.6-3.1 7.8-7 9-3.9-1.2-7-4.4-7-9V6l7-3z">' +
-      '</path>' +
-      '<polyline points="9 11.6 11.2 13.8 15.5 9.4"></polyline></svg>';
+      '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>';
 
   /** A small check mark for the wide "只看多卡可加" filled checkbox. */
   const CHECK_SVG =
@@ -5139,7 +5145,8 @@
     const ago = agoLabel(state.benefitsReadAt);
     if (ago) parts.push(ago);
     return {glyph: '＋', title: t('panelTitle'), subtitle: parts.join(' · '),
-      expand: true, lang: true, close: true, tabs: true, ...extra};
+      expand: true, keepAlive: true, lang: true, close: true, tabs: true,
+      ...extra};
   }
 
   /** @param {!Element} shell Panel content root. */
